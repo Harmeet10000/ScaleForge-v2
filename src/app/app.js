@@ -6,7 +6,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import timeout from 'express-timeout-handler';
 import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec } from '../docs/swagger.js';
+import { swaggerSpec } from '../../docs/swagger.js';
 import { httpError } from './utils/httpError.js';
 import globalErrorHandler from './middlewares/globalErrorHandler.js';
 import {

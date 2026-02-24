@@ -1,6 +1,6 @@
 import { migrate } from 'drizzle-orm/neon-http/migrator';
-import { db } from '../connections/connectPostgres.js';
-import { logger } from '../utils/logger.js';
+import { db } from '../app/connections/connectPostgres.js';
+import { logger } from '../app/utils/logger.js';
 import asyncHandler from 'express-async-handler';
 
 export const runMigrations = asyncHandler(async () => {

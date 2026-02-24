@@ -3,7 +3,7 @@ import app from './app.js';
 import mongoose from 'mongoose';
 import { connectDB, disconnectMongo } from './connections/connectDB.js';
 import { connectPostgres, disconnectPostgres } from './connections/connectPostgres.js';
-import { runMigrations } from './db/migrate.js';
+import { runMigrations } from '../db/migrate.js';
 import { connectRedis, disconnectRedis, redisClient } from './connections/connectRedis.js';
 import { createConnection, disconnectRabbitMQ } from './connections/connectRabbitMQ.js';
 // import { connectKafkaProducer, consumer, producer } from './connections/connectKafka.js';
