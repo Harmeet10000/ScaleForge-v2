@@ -1,0 +1,474 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Auth Template API",
+    "description": "\n        **Production Grade Authentication & Authorization Service**\n\n        This API provides comprehensive authentication and authorization services with enterprise-grade security features.\n\n        ## Features\n        - JWT-based authentication with refresh tokens\n        - Role-based access control (RBAC)\n        - Secure password handling with bcrypt\n        - Rate limiting and security middleware\n        - Comprehensive error handling\n        - Email verification and password reset\n\n        ## Authentication\n        This API uses Bearer Token authentication. Include your JWT token in the Authorization header:\n        `Authorization: Bearer <your-jwt-token>`\n\n        Alternatively, the API supports cookie-based authentication using the `accessToken` cookie.\n\n        ## Rate Limiting\n        API endpoints are rate-limited to prevent abuse. Default limits apply per IP address.\n\n        ## Error Handling\n        All endpoints return consistent error responses with appropriate HTTP status codes and descriptive messages.\n      ",
+    "version": "1.0.0",
+    "contact": {
+      "name": "Harmeet Singh",
+      "email": "harmeetsinghfbd@gmail.com",
+      "url": "https://github.com/Harmeet10000"
+    },
+    "license": {
+      "name": "ISC License",
+      "url": "https://github.com/Harmeet10000/production-grade-auth-template?tab=ISC-1-ov-file"
+    },
+    "termsOfService": "https://github.com/Harmeet10000/production-grade-auth-template"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8000/api/v1",
+      "description": "Development server (Local)"
+    },
+    {
+      "url": "http://auth-service/api/v1",
+      "description": "Dockerized server (Container)"
+    },
+    {
+      "url": "https://reasonable-amazement-production.up.railway.app/api/v1",
+      "description": "Production server (Railway)"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT Bearer token authentication. Format: Bearer <token>"
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "accessToken",
+        "description": "Authentication via HTTP-only cookie"
+      }
+    },
+    "schemas": {
+      "SuccessResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Operation completed successfully"
+          },
+          "data": {
+            "type": "object",
+            "description": "Response data (varies by endpoint)"
+          }
+        }
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": false
+          },
+          "message": {
+            "type": "string",
+            "example": "Error message description"
+          },
+          "error": {
+            "type": "string",
+            "example": "Detailed error information"
+          },
+          "statusCode": {
+            "type": "integer",
+            "example": 400
+          }
+        }
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "507f1f77bcf86cd799439011"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "example": "user@example.com"
+          },
+          "username": {
+            "type": "string",
+            "example": "john_doe"
+          },
+          "firstName": {
+            "type": "string",
+            "example": "John"
+          },
+          "lastName": {
+            "type": "string",
+            "example": "Doe"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["user", "admin", "moderator"],
+            "example": "user"
+          },
+          "isVerified": {
+            "type": "boolean",
+            "example": true
+          },
+          "isActive": {
+            "type": "boolean",
+            "example": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-01T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time",
+            "example": "2024-01-01T00:00:00.000Z"
+          }
+        }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "JWT access token",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          },
+          "refreshToken": {
+            "type": "string",
+            "description": "JWT refresh token",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+          },
+          "expiresIn": {
+            "type": "integer",
+            "description": "Token expiration time in seconds",
+            "example": 3600
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Authentication",
+      "description": "User authentication and authorization endpoints including login, registration, password reset, and token management"
+    },
+    {
+      "name": "Health",
+      "description": "System health check and status monitoring endpoints"
+    },
+    {
+      "name": "Permissions",
+      "description": "Role-based access control and permission management endpoints"
+    },
+    {
+      "name": "Users",
+      "description": "User profile management and administration endpoints"
+    }
+  ],
+  "security": [
+    {
+      "bearerAuth": []
+    },
+    {
+      "cookieAuth": []
+    }
+  ],
+  "paths": {
+    "/health/self": {
+      "get": {
+        "summary": "Get server identification",
+        "description": "Returns basic server information including server ID, container hostname, and timestamp",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Server information retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "request": {
+                      "type": "object",
+                      "properties": {
+                        "ip": {
+                          "type": "string",
+                          "example": "127.0.0.1"
+                        },
+                        "method": {
+                          "type": "string",
+                          "example": "GET"
+                        },
+                        "url": {
+                          "type": "string",
+                          "example": "/api/v1/health/self"
+                        },
+                        "correlationId": {
+                          "type": "string",
+                          "example": "abc123-def456"
+                        }
+                      }
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "server": {
+                          "type": "string",
+                          "example": "auth-service-1"
+                        },
+                        "container": {
+                          "type": "string",
+                          "example": "auth-service-2"
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time",
+                          "example": "2024-01-01T00:00:00.000Z"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/health": {
+      "get": {
+        "summary": "Comprehensive health check",
+        "description": "Returns detailed health information including application status, system metrics, and external service checks",
+        "tags": ["Health"],
+        "responses": {
+          "200": {
+            "description": "Health check completed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean",
+                      "example": true
+                    },
+                    "statusCode": {
+                      "type": "integer",
+                      "example": 200
+                    },
+                    "request": {
+                      "type": "object",
+                      "properties": {
+                        "ip": {
+                          "type": "string",
+                          "example": "127.0.0.1"
+                        },
+                        "method": {
+                          "type": "string",
+                          "example": "GET"
+                        },
+                        "url": {
+                          "type": "string",
+                          "example": "/api/v1/health"
+                        },
+                        "correlationId": {
+                          "type": "string",
+                          "example": "abc123-def456"
+                        }
+                      }
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "Success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "application": {
+                          "type": "object",
+                          "properties": {
+                            "environment": {
+                              "type": "string",
+                              "example": "development"
+                            },
+                            "uptime": {
+                              "type": "string",
+                              "example": "123.45 Seconds"
+                            },
+                            "memoryUsage": {
+                              "type": "object",
+                              "properties": {
+                                "heapTotal": {
+                                  "type": "string",
+                                  "example": "50.25 MB"
+                                },
+                                "heapUsed": {
+                                  "type": "string",
+                                  "example": "35.75 MB"
+                                }
+                              }
+                            },
+                            "pid": {
+                              "type": "integer",
+                              "example": 12345
+                            },
+                            "version": {
+                              "type": "string",
+                              "example": "v22.14.0"
+                            }
+                          }
+                        },
+                        "system": {
+                          "type": "object",
+                          "properties": {
+                            "cpuUsage": {
+                              "type": "array",
+                              "items": {
+                                "type": "number"
+                              },
+                              "example": [0.5, 0.3, 0.2]
+                            },
+                            "cpuUsagePercent": {
+                              "type": "string",
+                              "example": "25.50 + %"
+                            },
+                            "totalMemory": {
+                              "type": "string",
+                              "example": "8192.00 MB"
+                            },
+                            "freeMemory": {
+                              "type": "string",
+                              "example": "4096.00 MB"
+                            },
+                            "platform": {
+                              "type": "string",
+                              "example": "linux"
+                            },
+                            "arch": {
+                              "type": "string",
+                              "example": "x64"
+                            }
+                          }
+                        },
+                        "timestamp": {
+                          "type": "string",
+                          "format": "date-time",
+                          "example": "2024-01-01T00:00:00.000Z"
+                        },
+                        "checks": {
+                          "type": "object",
+                          "properties": {
+                            "database": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["healthy", "unhealthy"],
+                                  "example": "healthy"
+                                },
+                                "state": {
+                                  "type": "string",
+                                  "example": "connected"
+                                },
+                                "responseTime": {
+                                  "type": "number",
+                                  "example": 1234567890
+                                }
+                              }
+                            },
+                            "redis": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["healthy", "unhealthy"],
+                                  "example": "healthy"
+                                },
+                                "responseTime": {
+                                  "type": "number",
+                                  "example": 5
+                                },
+                                "connection": {
+                                  "type": "string",
+                                  "example": "ready"
+                                }
+                              }
+                            },
+                            "memory": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["healthy", "warning"],
+                                  "example": "healthy"
+                                },
+                                "totalMB": {
+                                  "type": "number",
+                                  "example": 50
+                                },
+                                "usedMB": {
+                                  "type": "number",
+                                  "example": 35
+                                },
+                                "usagePercent": {
+                                  "type": "number",
+                                  "example": 70
+                                }
+                              }
+                            },
+                            "disk": {
+                              "type": "object",
+                              "properties": {
+                                "status": {
+                                  "type": "string",
+                                  "enum": ["healthy", "unhealthy"],
+                                  "example": "healthy"
+                                },
+                                "accessible": {
+                                  "type": "boolean",
+                                  "example": true
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Health check failed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
