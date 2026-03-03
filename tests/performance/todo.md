@@ -38,7 +38,82 @@ const LRU = require('lru-cache');
 1. use bunfig.toml ans replace npmrc nvmrc 
 1. use debezium CDC for transactional outbox pattern for workers with rabbitmq-client package
    teams end up running Debezium (or Airbyte) + Kafka/Redpanda and just consume events in Node.js with excellent TypeScript support via kafkajs.
+1. make a proper terraform plan for all 3 major cloud providers with dev, staging and prod env and check all useful terraform plugin
+1. this project will follow ports and adapter pattern + more which are useful(dessign patterns)
+1. use shannon for security scanning.
+1. learn more about platformatic's' watt architecture and what can i learn from it  
+1. use platformatic's flame
 ```
+// logger.ts
+import pino from 'pino';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+export const requestStore = new AsyncLocalStorage<Map<string, any>>();
+
+const baseLogger = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  timestamp: pino.stdTimeFunctions.isoTime,
+  redact: ['password', 'token', 'creditCard'], // built-in PII protection
+});
+
+export const logger = baseLogger;
+
+// Helper to get current state
+export function getRequestState() {
+  return requestStore.getStore() || new Map();
+}
+
+import express from 'express';
+import { requestStore, logger } from './logger';
+
+const app = express();
+
+app.use((req, res, next) => {
+  const state = new Map<string, any>([
+    ['requestId', crypto.randomUUID()],
+    ['path', req.path],
+    ['method', req.method],
+    ['userId', null],
+    ['layer', 'middleware'],
+    ['validated', false],
+  ]);
+
+  requestStore.run(state, () => {
+    const child = logger.child(Object.fromEntries(state));
+    
+    // Attach child to req so every layer can use it
+    (req as any).logger = child;
+    
+    child.info('Request started');
+
+    res.on('finish', () => {
+      state.set('layer', 'response');
+      state.set('statusCode', res.statusCode);
+      child.info('Request finished');
+    });
+
+    next();
+  });
+});
+
+// Any service, controller, repository...
+async function processPayment(data: any) {
+  const state = getRequestState();
+  const log = (req as any).logger || logger; // fallback
+
+  // Update state
+  state.set('layer', 'payment_service');
+  state.set('amount', data.amount);
+  state.set('validated', true);
+
+  // Log – state is automatically included
+  log.info({ step: 'validate_card' }, 'Processing payment');
+
+  // If you want to force-update the child logger mid-request:
+  // (req as any).logger = log.child(Object.fromEntries(state));
+}
+
+
 anti pattern - starting a consumer from a server.js and consuming off a queue and doing a CPU heavy op thus blocking the event loop
 starting a background processing(CPU heavy task) after sending a fulfill response even worse anti pattern 
 what to do - each kind of traffic in out system needs to have a separate event loop (http server needs to be separate from queue based system)
