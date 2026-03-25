@@ -19,12 +19,8 @@ import {
 } from './middlewares/serverMiddleware.js';
 import authRoutes from './features/auth/authRoutes.js';
 import healthRoutes from './features/health/healthRoutes.js';
-import permissionsRoutes from './features/permissions/permissionsRoutes.js';
-import searchRoutes from './features/search/searchRoutes.js';
-import paymentsRoutes from './features/payments/paymentsRoutes.js';
-import subscriptionRoutes from './features/subscription/subscriptionRoutes.js';
-import recommendationsRoutes from './features/recommendations/recommendationsRoutes.js';
-import notificationRoutes from './features/notifications/notificationRoutes.js';
+// import searchRoutes from './features/search/searchRoutes.js';
+
 import s3Routes from './features/storage/s3Routes.js';
 import geminiRoutes from './features/gemini/geminiRoutes.js';
 import auditRoutes from './features/audit/auditRoutes.js';
@@ -123,15 +119,12 @@ app.get('/', (req, res) => {
 
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/health', healthRoutes);
-app.use('/api/v1/permissions', permissionsRoutes);
-app.use('/api/v1/search', searchRoutes);
-app.use('/api/v1/payments', paymentsRoutes);
-app.use('/api/v1/subscriptions', subscriptionRoutes);
+// app.use('/api/v1/search', searchRoutes);
+
 app.use('/api/v1/audit', auditRoutes);
-app.use('/api/v1/notifications', notificationRoutes);
+
 app.use('/api/v1/upload', s3Routes);
 app.use('/api/v1/gemini', geminiRoutes);
-app.use('/api/v1/recommendations', recommendationsRoutes);
 
 // 4) CATCHES ALL ROUTES THAT ARE NOT DEFINED
 app.all('*', (req, res, next) => {

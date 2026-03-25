@@ -33,6 +33,12 @@ LICENSE
 commitlint.config.js
 .husky
 .kiro
+Makefile
+helm-charts
+.env
+.editorconfig
+.idea
+coverage*
 certs
 dist
 docker
