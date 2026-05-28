@@ -1,0 +1,547 @@
+{
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/README.md": {
+    "mtime": 1771933870.448439,
+    "ast_hash": "6d270653fb7c80cbe85e0b2edb8c71f0",
+    "semantic_hash": "6d270653fb7c80cbe85e0b2edb8c71f0"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/config/promtail-config.yaml": {
+    "mtime": 1771933870.4481976,
+    "ast_hash": "12ceb1bb396bd5452b118dbcb31deae0",
+    "semantic_hash": "12ceb1bb396bd5452b118dbcb31deae0"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/config/loki-config.yaml": {
+    "mtime": 1771933870.4481976,
+    "ast_hash": "dd23121de4a17ad60377351927bff218",
+    "semantic_hash": "dd23121de4a17ad60377351927bff218"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/config/prometheus.yaml": {
+    "mtime": 1771933870.4481976,
+    "ast_hash": "baa08a6797ea6f12033c8733145fd503",
+    "semantic_hash": "baa08a6797ea6f12033c8733145fd503"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/testing-plan.md": {
+    "mtime": 1771933870.4556968,
+    "ast_hash": "54d5d18d5028425e2039be81b2204496",
+    "semantic_hash": "54d5d18d5028425e2039be81b2204496"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/Knock.md": {
+    "mtime": 1771933870.4566426,
+    "ast_hash": "1d3a1320fb9bab44d9d93bc4d729696c",
+    "semantic_hash": "1d3a1320fb9bab44d9d93bc4d729696c"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/LOAD_TESTING_GUIDE.md": {
+    "mtime": 1771933870.4566426,
+    "ast_hash": "e3e54591d5281547e411c667c1ef96af",
+    "semantic_hash": "e3e54591d5281547e411c667c1ef96af"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/AWS Personalise.md": {
+    "mtime": 1771933870.4566426,
+    "ast_hash": "a306017358b210b38108669ebca581e9",
+    "semantic_hash": "a306017358b210b38108669ebca581e9"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/CDC_plan.md": {
+    "mtime": 1771933870.4566426,
+    "ast_hash": "39feb634d9e22186e894a224ce689666",
+    "semantic_hash": "39feb634d9e22186e894a224ce689666"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/PERFORMANCE_SECURITY_ANALYSIS.md": {
+    "mtime": 1771933870.4566426,
+    "ast_hash": "fa1b08a801b0df763746b8bda7f02a8c",
+    "semantic_hash": "fa1b08a801b0df763746b8bda7f02a8c"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/todo.md": {
+    "mtime": 1779985844.5964005,
+    "ast_hash": "9491131b68bccd3ff63575076b40f95c",
+    "semantic_hash": "9491131b68bccd3ff63575076b40f95c"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/ NestJS-Plan.md": {
+    "mtime": 1771933870.4564242,
+    "ast_hash": "f29f913af66b3f5c73b5a88114d0197e",
+    "semantic_hash": "f29f913af66b3f5c73b5a88114d0197e"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/migrate.js": {
+    "mtime": 1771937716.798821,
+    "ast_hash": "4c1605502433efbbb44cca46c205a246",
+    "semantic_hash": "4c1605502433efbbb44cca46c205a246"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/seeders/auditSeeder.js": {
+    "mtime": 1771933870.4489982,
+    "ast_hash": "6d1077b2dae3aaa11a42b1fd24407c2b",
+    "semantic_hash": "6d1077b2dae3aaa11a42b1fd24407c2b"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/seeders/userSeeder.js": {
+    "mtime": 1771933870.4491518,
+    "ast_hash": "6e67e5f71a70aaf2d6dff80795ff2442",
+    "semantic_hash": "6e67e5f71a70aaf2d6dff80795ff2442"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/seeders/index.js": {
+    "mtime": 1771933870.4491518,
+    "ast_hash": "5ba3ab30c534396584bd7f57ae478237",
+    "semantic_hash": "5ba3ab30c534396584bd7f57ae478237"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/schema/paymentSchema.js": {
+    "mtime": 1771933870.4489982,
+    "ast_hash": "912152f747e64dd8b0d019dc7dbe9707",
+    "semantic_hash": "912152f747e64dd8b0d019dc7dbe9707"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/schema/auditSchema.js": {
+    "mtime": 1771933870.4488277,
+    "ast_hash": "0f73f12a8890e71b28a0951630983687",
+    "semantic_hash": "0f73f12a8890e71b28a0951630983687"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/db/schema/userSchema.js": {
+    "mtime": 1771933870.4489982,
+    "ast_hash": "4d83e8bec7ba73af6f973f0279f5827e",
+    "semantic_hash": "4d83e8bec7ba73af6f973f0279f5827e"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/app.js": {
+    "mtime": 1772792081.2696524,
+    "ast_hash": "91344dbec56de2e2f549025f7ef05f80",
+    "semantic_hash": "91344dbec56de2e2f549025f7ef05f80"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/index.js": {
+    "mtime": 1771937716.803533,
+    "ast_hash": "2f630a72567fa93587f9d0b38f5aaa36",
+    "semantic_hash": "2f630a72567fa93587f9d0b38f5aaa36"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationController.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "3e70f9df74f9a82d26a7590c2a28eebc",
+    "semantic_hash": "3e70f9df74f9a82d26a7590c2a28eebc"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationValidation.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "80a25873a3f95907c2e5747c231afd8f",
+    "semantic_hash": "80a25873a3f95907c2e5747c231afd8f"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationRoutes.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "d47b6a91eaab69e71a1da38219c8ad3d",
+    "semantic_hash": "d47b6a91eaab69e71a1da38219c8ad3d"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationRepository.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "8d4e84790df52a7d91a3e09aaa866b13",
+    "semantic_hash": "8d4e84790df52a7d91a3e09aaa866b13"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationLogModel.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "53907639fb979543d647b390280f74c8",
+    "semantic_hash": "53907639fb979543d647b390280f74c8"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationConstants.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "a83a0382675114c5a6b471636a1c5ac1",
+    "semantic_hash": "a83a0382675114c5a6b471636a1c5ac1"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationPreferencesModel.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "392104769e0f3657e2c0d02e552e5a69",
+    "semantic_hash": "392104769e0f3657e2c0d02e552e5a69"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/notificationService.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "aef32096ae05b90835c0b65958a7720f",
+    "semantic_hash": "aef32096ae05b90835c0b65958a7720f"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/notifications/deviceModel.js": {
+    "mtime": 1771933870.4510353,
+    "ast_hash": "68b54b834bc53c16ebde1f8043d9eeb4",
+    "semantic_hash": "68b54b834bc53c16ebde1f8043d9eeb4"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/storage/s3Routes.js": {
+    "mtime": 1771933870.4538183,
+    "ast_hash": "38145e9b4f23ec26350f4233dc1909cc",
+    "semantic_hash": "38145e9b4f23ec26350f4233dc1909cc"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/storage/s3Controller.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "99a3dac8fbd9e04b32de763fd7d7c5b1",
+    "semantic_hash": "99a3dac8fbd9e04b32de763fd7d7c5b1"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/storage/s3Service.js": {
+    "mtime": 1771933870.4538183,
+    "ast_hash": "ef5898f55870f49e24dd7193584b24eb",
+    "semantic_hash": "ef5898f55870f49e24dd7193584b24eb"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/storage/s3Validation.js": {
+    "mtime": 1771933870.4538183,
+    "ast_hash": "275a18aeb8a3f07c5b10273d414e29ba",
+    "semantic_hash": "275a18aeb8a3f07c5b10273d414e29ba"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/embeddingService.js": {
+    "mtime": 1771933870.4529018,
+    "ast_hash": "38404b7458b5ae33a407a5091d0bb28b",
+    "semantic_hash": "38404b7458b5ae33a407a5091d0bb28b"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/searchService.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "3c76a25d6a7e80c7961722e0f0d220df",
+    "semantic_hash": "3c76a25d6a7e80c7961722e0f0d220df"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/searchController.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "612b721b2e3cd7d71e09af40b5b7f0d0",
+    "semantic_hash": "612b721b2e3cd7d71e09af40b5b7f0d0"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/searchRoutes.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "afef7630ca6f5598d11ce2ace189bb4c",
+    "semantic_hash": "afef7630ca6f5598d11ce2ace189bb4c"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/searchConstants.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "4df848eac8ab3353472e1e5e6c912771",
+    "semantic_hash": "4df848eac8ab3353472e1e5e6c912771"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/pipelineService.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "d5f6017e7b50a9978f612ad049493d93",
+    "semantic_hash": "d5f6017e7b50a9978f612ad049493d93"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/searchQueryBuilders.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "573ca949853c76bd174b0017c0e541fa",
+    "semantic_hash": "573ca949853c76bd174b0017c0e541fa"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/searchValidation.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "dec34791d8243a99e83c7e8d8d6e3d54",
+    "semantic_hash": "dec34791d8243a99e83c7e8d8d6e3d54"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/search/searchRepository.js": {
+    "mtime": 1771933870.4531076,
+    "ast_hash": "047af688aee052e67ac99fb9ef37ebb7",
+    "semantic_hash": "047af688aee052e67ac99fb9ef37ebb7"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditController.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "a776fa1235e5a317dc1ffc1fe35f5c5a",
+    "semantic_hash": "a776fa1235e5a317dc1ffc1fe35f5c5a"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditRepository.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "e0360c63bbfdda64dd1d316bf3df3412",
+    "semantic_hash": "e0360c63bbfdda64dd1d316bf3df3412"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditRoutes.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "8b68de32e35bbf30a8e1699cf5013ba9",
+    "semantic_hash": "8b68de32e35bbf30a8e1699cf5013ba9"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditModel.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "612edf598024e5f83e97eb6677fa2324",
+    "semantic_hash": "612edf598024e5f83e97eb6677fa2324"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditConstants.js": {
+    "mtime": 1771933870.449572,
+    "ast_hash": "05bbf0dbb72f7a6702332a8293e0c733",
+    "semantic_hash": "05bbf0dbb72f7a6702332a8293e0c733"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditUtils.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "0ac2c4de5b16fbfc1a38a48749855f4d",
+    "semantic_hash": "0ac2c4de5b16fbfc1a38a48749855f4d"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditValidation.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "585cfcb4ec158d71e0f0fc46002def1f",
+    "semantic_hash": "585cfcb4ec158d71e0f0fc46002def1f"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/audit/auditService.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "2482ebb82ca4aa6c262e8a810990fb71",
+    "semantic_hash": "2482ebb82ca4aa6c262e8a810990fb71"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/health/healthRoutes.js": {
+    "mtime": 1771933870.4510353,
+    "ast_hash": "e4582c6f01474d70e57265527df765e0",
+    "semantic_hash": "e4582c6f01474d70e57265527df765e0"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/health/healthController.js": {
+    "mtime": 1771933870.4508379,
+    "ast_hash": "cce24330c337dab70c85b6e7a53fc531",
+    "semantic_hash": "cce24330c337dab70c85b6e7a53fc531"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/gemini/geminiRoutes.js": {
+    "mtime": 1771933870.4508379,
+    "ast_hash": "12fde42d1c05dc7443cd197633b87674",
+    "semantic_hash": "12fde42d1c05dc7443cd197633b87674"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/gemini/geminiController.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "67604c15977d730e36e91abd48f4ff54",
+    "semantic_hash": "67604c15977d730e36e91abd48f4ff54"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/authRepository.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "dee9dde38f314df93a33e0f94d73b0eb",
+    "semantic_hash": "dee9dde38f314df93a33e0f94d73b0eb"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/authMiddleware.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "1e39f60ac05c50e8b439263029c569a7",
+    "semantic_hash": "1e39f60ac05c50e8b439263029c569a7"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/authService.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "8d3981ab9bff9aed435219ccd2f0f6b7",
+    "semantic_hash": "8d3981ab9bff9aed435219ccd2f0f6b7"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/refreshToken.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "7c4fd5c50665f303251c0ccd5d555539",
+    "semantic_hash": "7c4fd5c50665f303251c0ccd5d555539"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/tokenRepository.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "399f029b67eb7d16023ab5fc54ee8d09",
+    "semantic_hash": "399f029b67eb7d16023ab5fc54ee8d09"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/userModel.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "4afdf578b9b4e64d57c927a934b278cf",
+    "semantic_hash": "4afdf578b9b4e64d57c927a934b278cf"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/authConstants.js": {
+    "mtime": 1771933870.449643,
+    "ast_hash": "32968c4bfdcaa2079bba52964635a8f3",
+    "semantic_hash": "32968c4bfdcaa2079bba52964635a8f3"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/authController.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "a15a88f6a5885666d08e70bdd78cd8ad",
+    "semantic_hash": "a15a88f6a5885666d08e70bdd78cd8ad"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/authValidation.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "57165fd2e9413f3074dd64b10b7d80e8",
+    "semantic_hash": "57165fd2e9413f3074dd64b10b7d80e8"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/auth/authRoutes.js": {
+    "mtime": 1771933870.4502213,
+    "ast_hash": "cf67b784556c5ee8eb1708fc7f3f9906",
+    "semantic_hash": "cf67b784556c5ee8eb1708fc7f3f9906"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/payments/paymentModel.js": {
+    "mtime": 1771933870.451855,
+    "ast_hash": "5a9d9ee0ba9f30c38defa939ab8b10ec",
+    "semantic_hash": "5a9d9ee0ba9f30c38defa939ab8b10ec"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/payments/paymentValidation.js": {
+    "mtime": 1771933870.451855,
+    "ast_hash": "83fb1116fa6c65be3530e3cc077becbd",
+    "semantic_hash": "83fb1116fa6c65be3530e3cc077becbd"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/payments/paymentConstants.js": {
+    "mtime": 1771933870.451176,
+    "ast_hash": "21f0748910dd8c66701361284f95183a",
+    "semantic_hash": "21f0748910dd8c66701361284f95183a"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/features/payments/paymentsRoutes.js": {
+    "mtime": 1771933870.451855,
+    "ast_hash": "a8c4a2c36de8e753a183626c6cbe986d",
+    "semantic_hash": "a8c4a2c36de8e753a183626c6cbe986d"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/api/v2.ts": {
+    "mtime": 1771937777.3240476,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/api/v1.ts": {
+    "mtime": 1771937766.8097844,
+    "ast_hash": "d41d8cd98f00b204e9800998ecf8427e",
+    "semantic_hash": "d41d8cd98f00b204e9800998ecf8427e"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectOpenFGA.ts": {
+    "mtime": 1774428618.0468805,
+    "ast_hash": "08a22260dfb99fe0e73b55768aceaeed",
+    "semantic_hash": "08a22260dfb99fe0e73b55768aceaeed"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectNovu.js": {
+    "mtime": 1771933870.448439,
+    "ast_hash": "63b182cce80591fb2117454d7323e2a7",
+    "semantic_hash": "63b182cce80591fb2117454d7323e2a7"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectPostgres.js": {
+    "mtime": 1771933870.448439,
+    "ast_hash": "546b309ae914192d5a5104708f03f520",
+    "semantic_hash": "546b309ae914192d5a5104708f03f520"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectElasticSearch.js": {
+    "mtime": 1772645931.272498,
+    "ast_hash": "9cc4d3e13bea6c9f5c4c94f7e712977a",
+    "semantic_hash": "9cc4d3e13bea6c9f5c4c94f7e712977a"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectRedis.js": {
+    "mtime": 1771933870.448439,
+    "ast_hash": "9836e981645ff8657cb8ee4c2fac242a",
+    "semantic_hash": "9836e981645ff8657cb8ee4c2fac242a"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectDB.js": {
+    "mtime": 1771933870.4481976,
+    "ast_hash": "d3875d9fc7a2b7883b7edbbea8cdd4a2",
+    "semantic_hash": "d3875d9fc7a2b7883b7edbbea8cdd4a2"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectKafka.js": {
+    "mtime": 1771933870.448439,
+    "ast_hash": "840b1f76a7d19a999ac92ed5c3e30ff1",
+    "semantic_hash": "840b1f76a7d19a999ac92ed5c3e30ff1"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/connections/connectRabbitMQ.js": {
+    "mtime": 1771933870.448439,
+    "ast_hash": "5c6792ae33074a92a0a3bbed5f6f2b9a",
+    "semantic_hash": "5c6792ae33074a92a0a3bbed5f6f2b9a"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/gemini.js": {
+    "mtime": 1771933870.4546092,
+    "ast_hash": "ccb76da275bf741426a4bf6334cbaebe",
+    "semantic_hash": "ccb76da275bf741426a4bf6334cbaebe"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/generalHelper.js": {
+    "mtime": 1771933870.4546092,
+    "ast_hash": "80da9fe5968a410f03813d84bbddc25f",
+    "semantic_hash": "80da9fe5968a410f03813d84bbddc25f"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/kafka.js": {
+    "mtime": 1771933870.4546092,
+    "ast_hash": "1f3380fd4ddf531e53c61449ffc10f84",
+    "semantic_hash": "1f3380fd4ddf531e53c61449ffc10f84"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/email.js": {
+    "mtime": 1771933870.4546092,
+    "ast_hash": "537426016a7ca65644f0e9f34ca9a3dd",
+    "semantic_hash": "537426016a7ca65644f0e9f34ca9a3dd"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/application.js": {
+    "mtime": 1771933870.4540842,
+    "ast_hash": "d759ab48c05b7e5bbfc83a49b605edd5",
+    "semantic_hash": "d759ab48c05b7e5bbfc83a49b605edd5"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/cache/redisFunctions.js": {
+    "mtime": 1771933870.4546092,
+    "ast_hash": "15e32abcd5d5894a9422a526fd1d9609",
+    "semantic_hash": "15e32abcd5d5894a9422a526fd1d9609"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/messaging/producers/rabbitMQProducer.js": {
+    "mtime": 1771933870.4549227,
+    "ast_hash": "40bf110b47d0bd26113565663e7272d5",
+    "semantic_hash": "40bf110b47d0bd26113565663e7272d5"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/messaging/consumers/rabbitMQConsumer.js": {
+    "mtime": 1771933870.4549227,
+    "ast_hash": "b2196b1eaccc79f05aae8f5d40197057",
+    "semantic_hash": "b2196b1eaccc79f05aae8f5d40197057"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/helpers/templates/emailTemplates.js": {
+    "mtime": 1771933870.4549227,
+    "ast_hash": "410b68b01a89089bf0acf142ce8987fa",
+    "semantic_hash": "410b68b01a89089bf0acf142ce8987fa"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/middlewares/serverMiddleware.js": {
+    "mtime": 1771933870.4554932,
+    "ast_hash": "145df6f09147864c29c333e4608953b1",
+    "semantic_hash": "145df6f09147864c29c333e4608953b1"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/middlewares/globalErrorHandler.js": {
+    "mtime": 1771933870.4549227,
+    "ast_hash": "eabda53cc12a4fb7ed182004149090cc",
+    "semantic_hash": "eabda53cc12a4fb7ed182004149090cc"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/examples/rabbitMQExample.js": {
+    "mtime": 1771933870.449297,
+    "ast_hash": "97f34f0515afc64ddf56d8f905b1c73f",
+    "semantic_hash": "97f34f0515afc64ddf56d8f905b1c73f"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/examples/redisAdvancedExamples.js": {
+    "mtime": 1771933870.449297,
+    "ast_hash": "fcb0e5dc6e3f3018296cb8599407f9a4",
+    "semantic_hash": "fcb0e5dc6e3f3018296cb8599407f9a4"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/examples/kafkaExamples.js": {
+    "mtime": 1771933870.4491518,
+    "ast_hash": "2a910a56362f4afcd46abda0b852e217",
+    "semantic_hash": "2a910a56362f4afcd46abda0b852e217"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/examples/openFGAExamples.js": {
+    "mtime": 1771933870.449297,
+    "ast_hash": "2d8186a673f3ed8c9dde234398e73f2c",
+    "semantic_hash": "2d8186a673f3ed8c9dde234398e73f2c"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/utils/asyncLocalStorage.js": {
+    "mtime": 1771933870.4556968,
+    "ast_hash": "c126448d8f79a9eb1f8383f6449d9a39",
+    "semantic_hash": "c126448d8f79a9eb1f8383f6449d9a39"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/utils/quicker.js": {
+    "mtime": 1771933870.4556968,
+    "ast_hash": "e565385a006f2851a5092f234077d3f5",
+    "semantic_hash": "e565385a006f2851a5092f234077d3f5"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/utils/apiFeatures.js": {
+    "mtime": 1771933870.4554932,
+    "ast_hash": "bb33b8c88ec5f959c6217ae6683f60ff",
+    "semantic_hash": "bb33b8c88ec5f959c6217ae6683f60ff"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/utils/httpError.js": {
+    "mtime": 1771933870.4556968,
+    "ast_hash": "44718ada9d7ab7d728a75088ff59d649",
+    "semantic_hash": "44718ada9d7ab7d728a75088ff59d649"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/utils/logger.js": {
+    "mtime": 1771933870.4556968,
+    "ast_hash": "2d0b4574f1cd4633c88a8f46b7207ed7",
+    "semantic_hash": "2d0b4574f1cd4633c88a8f46b7207ed7"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/utils/httpResponse.js": {
+    "mtime": 1771933870.4556968,
+    "ast_hash": "3bf72c4bd0c91da05c786c5f3577a828",
+    "semantic_hash": "3bf72c4bd0c91da05c786c5f3577a828"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/utils/transactionManager.js": {
+    "mtime": 1771933870.4556968,
+    "ast_hash": "0286152ed1b0d23b610909ab8455ea19",
+    "semantic_hash": "0286152ed1b0d23b610909ab8455ea19"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/config/searchConfig.js": {
+    "mtime": 1771933870.4481976,
+    "ast_hash": "f4c139a74601a87f2cd3350f215bb33a",
+    "semantic_hash": "f4c139a74601a87f2cd3350f215bb33a"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/src/app/config/dotenvConfig.js": {
+    "mtime": 1771933870.4481413,
+    "ast_hash": "6bc1daf98003f6e716952956dfc68ac5",
+    "semantic_hash": "6bc1daf98003f6e716952956dfc68ac5"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/integration/health.integration.test.js": {
+    "mtime": 1771933870.4564242,
+    "ast_hash": "e9f41000cef6648f85630672d27b6b48",
+    "semantic_hash": "e9f41000cef6648f85630672d27b6b48"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/integration/billingIntegration.test.js": {
+    "mtime": 1771933870.4562006,
+    "ast_hash": "bfd60d05f5d03c32b93a275078a9db6f",
+    "semantic_hash": "bfd60d05f5d03c32b93a275078a9db6f"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/e2e/health.e2e.test.js": {
+    "mtime": 1771933870.4562006,
+    "ast_hash": "d95a61d1d2e07b836c5ec8cf810a0083",
+    "semantic_hash": "d95a61d1d2e07b836c5ec8cf810a0083"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/unit/healthController.test.js": {
+    "mtime": 1771933870.460422,
+    "ast_hash": "df8d09cf8b1bba3aedf07a59fa68f197",
+    "semantic_hash": "df8d09cf8b1bba3aedf07a59fa68f197"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/unit/health.test.js": {
+    "mtime": 1771933870.4588985,
+    "ast_hash": "aae5e3d7608398f0d7621e22e89ffbf5",
+    "semantic_hash": "aae5e3d7608398f0d7621e22e89ffbf5"
+  },
+  "/home/harmeet/Desktop/Projects/ScaleForge-v2/tests/performance/Production-Grade Authentication Service - Project Summary - visual selection.png": {
+    "mtime": 1771933870.4588985,
+    "ast_hash": "1409c14feb1905818ce9dfa5420cea93",
+    "semantic_hash": "1409c14feb1905818ce9dfa5420cea93"
+  }
+}
