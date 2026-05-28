@@ -6,7 +6,9 @@
 
 **Architecture:** Effect-Native Hexagonal. Fastify at the HTTP edge (routing, plugins, OpenAPI, serialization). Effect as the coordination runtime (services, layers, typed errors, resource management, concurrency, DI). One ManagedRuntime shared across all requests, registered as a Fastify decorator via `fastify-plugin`. All business logic lives in Effect workflows, never in Fastify handlers. Dual databases (MongoDB + PostgreSQL) wrapped as Effect services with `acquireRelease`.
 
-**Tech Stack:** TypeScript 6.x, Bun, Fastify 5.x, Effect, Effect Schema, Drizzle ORM, Mongoose, ioredis, amqp-connection-manager, Pino, OpenFGA, Elasticsearch, PASETO (paseto-ts), Arctic (OAuth)
+**Tech Stack:** TypeScript 6.x, Bun, Fastify 5.x, Effect v4 (beta), Drizzle ORM, Mongoose, ioredis, amqp-connection-manager, Pino, OpenFGA, Elasticsearch, PASETO (paseto-ts), Arctic (OAuth)
+
+> **Effect v4 Note:** This plan targets Effect v4 (beta). Key v4 changes applied throughout: `Context.Service` replaces `Effect.Service`; `Context.Reference` replaces `FiberRef`; `@effect/schema` and `@effect/platform` merged into core `effect` package (all imports from `"effect"`); Schema renames (`annotations` → `annotate`, `compose` → `decodeTo`, `asSchema` → `revealCodec`, `encodedSchema` → `toEncoded`, `typeSchema` → `toType`); `Scope.extend` → `Scope.provide`; unstable modules under `effect/unstable/*`. `ManagedRuntime` still exists. `.Default` layer naming TBD (may become `.layer` in final v4 — verify on release).
 
 ---
 
@@ -18,7 +20,7 @@ No separate `ports/` or `adapters/` directories. Effect's type system provides t
 
 | Hexagonal Concept | Effect Equivalent |
 |---|---|
-| Port (abstraction) | `Effect.Service` tag declaration |
+| Port (abstraction) | `Context.Service` class declaration (v4) |
 | Adapter (implementation) | `Layer` that provides the service |
 | DI Container | `Layer.mergeAll` + `ManagedRuntime` |
 | Swapping implementations | Provide different `Layer` (test vs prod) |
@@ -37,7 +39,7 @@ No separate `ports/` or `adapters/` directories. Effect's type system provides t
 
 ### FP Over OOP
 
-- **Classes for:** Effect Service tags (nominal types), Mongoose models, `Data.TaggedError`, Fastify declaration merging
+- **Classes for:** `Context.Service` tags (nominal types), `Context.Reference` (request context), Mongoose models, `Data.TaggedError`, Fastify declaration merging
 - **Functions for:** Everything else -- validators, transforms, helpers, pipeline stages, workflow methods
 
 The Effect Service class is just a tag. The actual logic is `Effect.gen` generators -- pure FP.
@@ -166,7 +168,7 @@ helpers/          (pure functions, no deps)
 - **API versioning:** URL prefix `/api/v1/`
 - **Errors:** All centralized in `core/errors/`, grouped by domain area
 - **Validation:** Effect Schema inside `effectHandler`, at route entry
-- **Request context:** FiberRef for userId, correlationId, IP
+- **Request context:** `Context.Reference` (v4) for userId, correlationId, IP — set via `Effect.provideService`, read by yielding directly
 - **Logging:** Pino (Fastify-native) + Effect.log unified via Pino
 - **Testing:** TDD test-first, tests in `tests/` directory
 
@@ -182,7 +184,7 @@ helpers/          (pure functions, no deps)
 6. **Effect Schema everywhere** -- Replaces Joi for validation with compile-time type inference
 7. **Pino** -- Replaces Winston (Fastify uses Pino natively)
 8. **One `effectHandler`** -- Central error mapping via `toHttpError`, no `any` types
-9. **FiberRef for request context** -- userId, correlationId, IP propagated through Effect fibers
+9. **Context.Reference for request context** (v4) -- userId, correlationId, IP as `Context.Reference` classes; set via `Effect.provideService`, read by yielding directly (replaces `FiberRef` + `Effect.locally`)
 10. **Workers as separate processes** -- Own entry point, own runtime, shared Layer definitions
 
 ---
@@ -248,14 +250,14 @@ git add -A && git commit -m "chore: rename all .js files to .ts"
 - [ ] **Step 1: Install Effect ecosystem + Fastify + new infra deps**
 
 ```bash
-bun add effect @effect/schema @effect/platform
+bun add effect
 bun add fastify @fastify/cors @fastify/helmet @fastify/rate-limit @fastify/cookie @fastify/compress @fastify/swagger @fastify/swagger-ui @fastify/multipart @fastify/sensible fastify-plugin
 bun add arctic
 bun remove better-auth
 bun add -d @effect/language-service
 ```
 
-Note: Many Fastify packages already in deps. This ensures latest versions. `arctic` replaces `better-auth` for OAuth (authorization URLs + token exchange only). `paseto-ts` already in deps.
+Note: In Effect v4, `@effect/schema` and `@effect/platform` are merged into the core `effect` package -- no separate installs needed. Many Fastify packages already in deps. This ensures latest versions. `arctic` replaces `better-auth` for OAuth (authorization URLs + token exchange only). `paseto-ts` already in deps.
 
 - [ ] **Step 2: Commit**
 
@@ -684,9 +686,9 @@ git add src/core/schemas/ && git commit -m "feat: add common Effect Schemas"
 
 ```typescript
 // src/core/config/configService.ts
-import { Effect, Config, Redacted } from "effect"
+import { Effect, Config, Context, Redacted } from "effect"
 
-export class AppConfig extends Effect.Service<AppConfig>()("AppConfig", {
+export class AppConfig extends Context.Service<AppConfig>()("AppConfig", {
   effect: Effect.gen(function* () {
     const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000))
     const nodeEnv = yield* Config.string("NODE_ENV").pipe(Config.withDefault("development"))
@@ -753,12 +755,12 @@ This phase wraps all external connections in Effect services using `acquireRelea
 
 ```typescript
 // src/infra/mongo/mongoService.ts
-import { Effect } from "effect"
+import { Effect, Context } from "effect"
 import mongoose from "mongoose"
 import { AppConfig } from "../../core/config/configService.ts"
 import { MongoConnectionError } from "../../core/errors/infraErrors.ts"
 
-export class MongoService extends Effect.Service<MongoService>()("MongoService", {
+export class MongoService extends Context.Service<MongoService>()("MongoService", {
   effect: Effect.gen(function* () {
     const config = yield* AppConfig
 
@@ -810,13 +812,13 @@ git add src/infra/mongo/ && git commit -m "feat: add MongoService with acquireRe
 
 ```typescript
 // src/infra/postgres/postgresService.ts
-import { Effect } from "effect"
+import { Effect, Context } from "effect"
 import { neon } from "@neondatabase/serverless"
 import { drizzle, type NeonHttpDatabase } from "drizzle-orm/neon-http"
 import { AppConfig } from "../../core/config/configService.ts"
 import { PostgresConnectionError, PostgresQueryError } from "../../core/errors/infraErrors.ts"
 
-export class PostgresService extends Effect.Service<PostgresService>()("PostgresService", {
+export class PostgresService extends Context.Service<PostgresService>()("PostgresService", {
   effect: Effect.gen(function* () {
     const config = yield* AppConfig
 
@@ -857,12 +859,12 @@ git add src/infra/postgres/ && git commit -m "feat: add PostgresService with Dri
 
 ```typescript
 // src/infra/redis/redisService.ts
-import { Effect, Redacted } from "effect"
+import { Effect, Context, Redacted } from "effect"
 import Redis from "ioredis"
 import { AppConfig } from "../../core/config/configService.ts"
 import { RedisConnectionError, RedisCommandError } from "../../core/errors/infraErrors.ts"
 
-export class RedisService extends Effect.Service<RedisService>()("RedisService", {
+export class RedisService extends Context.Service<RedisService>()("RedisService", {
   effect: Effect.gen(function* () {
     const config = yield* AppConfig
 
@@ -959,12 +961,12 @@ git add src/infra/redis/ && git commit -m "feat: add RedisService with acquireRe
 
 ```typescript
 // src/infra/rabbitmq/rabbitmqService.ts
-import { Effect, Schedule } from "effect"
+import { Effect, Context, Schedule } from "effect"
 import amqplib, { type Channel } from "amqp-connection-manager"
 import { AppConfig } from "../../core/config/configService.ts"
 import { RabbitMQConnectionError, RabbitMQPublishError } from "../../core/errors/infraErrors.ts"
 
-export class RabbitMQService extends Effect.Service<RabbitMQService>()("RabbitMQService", {
+export class RabbitMQService extends Context.Service<RabbitMQService>()("RabbitMQService", {
   effect: Effect.gen(function* () {
     const config = yield* AppConfig
 
@@ -1030,12 +1032,12 @@ git add src/infra/rabbitmq/ && git commit -m "feat: add RabbitMQService with acq
 
 ```typescript
 // src/infra/email/emailService.ts
-import { Effect, Redacted } from "effect"
+import { Effect, Context, Redacted } from "effect"
 import { Resend } from "resend"
 import { AppConfig } from "../../core/config/configService.ts"
 import { EmailSendError } from "../../core/errors/infraErrors.ts"
 
-export class EmailService extends Effect.Service<EmailService>()("EmailService", {
+export class EmailService extends Context.Service<EmailService>()("EmailService", {
   effect: Effect.gen(function* () {
     const config = yield* AppConfig
     const resend = new Resend(Redacted.value(config.email.resendApiKey))
@@ -1147,16 +1149,25 @@ This is where Fastify and Effect meet. One file, three responsibilities:
 
 ```typescript
 // src/runtime/fastifyBridge.ts
-import { Effect, Exit, Cause, FiberRef } from "effect"
+import { Effect, Exit, Cause, Context } from "effect"
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify"
 import fp from "fastify-plugin"
 import { AppRuntime } from "./appRuntime.ts"
 import { toHttpError, type AppError } from "../core/errors/httpErrors.ts"
 
-// -- Request context FiberRefs --
-export const RequestId = FiberRef.unsafeMake("")
-export const CurrentUserId = FiberRef.unsafeMake("")
-export const CurrentUserIp = FiberRef.unsafeMake("")
+// -- Request context via Context.Reference (v4 -- replaces FiberRef) --
+// These are yielded directly to read, set via Effect.provideService
+export class RequestId extends Context.Reference<RequestId>()("RequestId", {
+  defaultValue: () => ""
+}) {}
+
+export class CurrentUserId extends Context.Reference<CurrentUserId>()("CurrentUserId", {
+  defaultValue: () => ""
+}) {}
+
+export class CurrentUserIp extends Context.Reference<CurrentUserIp>()("CurrentUserIp", {
+  defaultValue: () => ""
+}) {}
 
 // -- Declaration merging: type the decorator --
 declare module "fastify" {
@@ -1192,7 +1203,7 @@ export const effectRuntimePlugin = fp(
  * Error handling:
  * - AppError (typed failures): mapped to HTTP via toHttpError()
  * - Defects (unexpected crashes): logged + 500
- * - Request context (correlationId, IP) set via FiberRef
+ * - Request context (correlationId, IP) set via Context.Reference + Effect.provideService (v4)
  */
 export const effectHandler = <A>(
   handler: (request: FastifyRequest, reply: FastifyReply) => Effect.Effect<A, AppError, never>
@@ -1204,10 +1215,10 @@ export const effectHandler = <A>(
   ) {
     const runtime = this.effectRuntime
 
-    // Set request-scoped context via FiberRef
+    // Set request-scoped context via Context.Reference (v4)
     const effect = handler(request, reply).pipe(
-      Effect.locally(RequestId, request.id as string),
-      Effect.locally(CurrentUserIp, request.ip)
+      Effect.provideService(RequestId, request.id as string),
+      Effect.provideService(CurrentUserIp, request.ip)
     )
 
     const exit = await runtime.runPromiseExit(effect)
@@ -1599,7 +1610,7 @@ git add src/features/health/healthSchema.ts && git commit -m "feat: add health r
 
 ```typescript
 // src/features/health/healthService.ts
-import { Effect } from "effect"
+import { Effect, Context } from "effect"
 import os from "node:os"
 import fs from "node:fs/promises"
 import mongoose from "mongoose"
@@ -1652,7 +1663,7 @@ const checkDisk = Effect.tryPromise({
   catch: (error) => new HealthCheckError({ component: "disk", cause: error })
 })
 
-export class HealthService extends Effect.Service<HealthService>()("HealthService", {
+export class HealthService extends Context.Service<HealthService>()("HealthService", {
   effect: Effect.gen(function* () {
     const config = yield* AppConfig
 
@@ -1975,7 +1986,7 @@ No `req`, no `next`, no `asyncHandler`. Pure Effect workflows with typed errors.
 
 ```typescript
 // src/features/auth/authService.ts
-import { Effect, Redacted } from "effect"
+import { Effect, Context, Redacted } from "effect"
 import dayjs from "dayjs"
 import utc from "dayjs/plugin/utc.js"
 import { RedisService } from "../../infra/redis/redisService.ts"
@@ -1995,7 +2006,7 @@ import {
 
 dayjs.extend(utc)
 
-export class AuthService extends Effect.Service<AuthService>()("AuthService", {
+export class AuthService extends Context.Service<AuthService>()("AuthService", {
   effect: Effect.gen(function* () {
     const config = yield* AppConfig
     const redis = yield* RedisService
@@ -2345,6 +2356,10 @@ git add -A && git commit -m "chore: final cleanup, all type errors resolved"
 | Winston logger | Pino (Fastify-native) + Effect.log | 7 |
 | Express middleware chain | Fastify hooks + plugins | 4-5 |
 | `throw new Error()` | `yield* new TaggedError()` | All |
+| `Effect.Service` (v3) | `Context.Service` (v4) | All |
+| `FiberRef` + `Effect.locally` | `Context.Reference` + `Effect.provideService` (v4) | 3 |
+| `@effect/schema` import | `import { Schema } from "effect"` (v4 merge) | 0 |
+| `@effect/platform` import | `import { ... } from "effect"` (v4 merge) | 0 |
 
 ## Risk Mitigation
 
@@ -2366,3 +2381,77 @@ git add -A && git commit -m "chore: final cleanup, all type errors resolved"
 | Phase 6: Remaining (deferred) | TBD |
 | Phase 7: Cleanup | 3-4 hours |
 | **Total (through Auth)** | **~22-31 hours** |
+
+---
+
+## v2 Improvement Suggestions (from Graphify Analysis)
+
+These 12 architectural improvements were identified from graph analysis of the v1 codebase (739 nodes, 1141 edges, 48 communities). None are automatically solved by Effect v4 -- they require deliberate architectural work during the relevant phase. Sorted by integration point.
+
+### Phase 2 (Infrastructure) Improvements
+
+| # | Suggestion | Action | Why |
+|---|---|---|---|
+| 2 | **Split Redis into RedisService + CacheService** | Create `CacheService` (bloom filters, rate limiting, pub/sub) on top of `RedisService` (raw commands) | Single Redis service doing too much in v1 -- 22-community coupling via Logger pattern |
+| 3 | **RabbitMQ producer/consumer/DLX abstractions** | `RabbitMQService` exposes `declareQueue`, `declareExchange`, `publish`, `consume`, `setupDLX` -- not just `publish()` | v1 RabbitMQ was fire-and-forget only; v2 needs consumers, dead-letter queues, per-queue config |
+
+### Phase 3 (Runtime + Bridge) Improvements
+
+| # | Suggestion | Action | Why |
+|---|---|---|---|
+| 1 | **Logger as Effect layer only** | Create `PinoLoggerLayer` via `Logger.replace(Logger.defaultLogger, ...)` -- features use `Effect.log`, never import Pino directly | Logger is the #1 god node (39 edges, bridges 22/48 communities). Effect layer eliminates coupling |
+| 6 | **Derive Fastify JSON Schema from Effect Schema** | Use `JSONSchema.make(MySchema)` in route `schema.body`/`schema.response` -- single source of truth | Eliminates dual-schema maintenance (Effect Schema for validation + hand-written JSON Schema for Swagger) |
+| 12 | **Fix effectHandler R-channel typing** | Parameterize `effectHandler<A, E extends AppError, R>` so routes can yield services from R | CRITICAL: plan had R typed as `never` but route bodies yield `HealthService`, `AuthService`, etc. |
+
+### Phase 4 (Health) Improvements
+
+| # | Suggestion | Action | Why |
+|---|---|---|---|
+| 7 | **Graceful degradation tiers** | Health checks return `"critical"` / `"degraded"` / `"graceful"` status instead of binary healthy/unhealthy | Current `HealthCheckError` not in `AppError` union -- health checks should catch and return degraded, not crash |
+
+### Phase 5 (Auth) Improvements
+
+| # | Suggestion | Action | Why |
+|---|---|---|---|
+| 5 | **zxcvbn for password strength** | Add `zxcvbn` check in `RegisterInput` schema or `authService.registerUser` -- reject passwords below score threshold | Already in deps but unused. Prevents weak passwords beyond just length checks |
+| 8 | **Password hash migration bcrypt→argon2** | On login, if hash starts with `$2b$` (bcrypt), re-hash with argon2 and save. Transparent to user | Existing v1 passwords are bcrypt. argon2 is the v2 standard. Migration on login avoids mass reset |
+| 11 | **Per-route rate limiting** | Fastify `@fastify/rate-limit` config per route: login 5/min, register 3/min, forgot-password 2/min | Global 100/15min is too loose for auth. Credential stuffing needs per-endpoint throttling |
+
+### Phase 6+ (Deferred) Improvements
+
+| # | Suggestion | Action | Why |
+|---|---|---|---|
+| 4 | **WebSocket layer** | `@fastify/websocket` + PASETO upgrade auth + Redis presence tracking + per-user connection limits | v1 had WebSocket but no auth, no presence, no connection limits |
+| 9 | **Event-driven audit via RabbitMQ** | Auth/admin actions publish to `audit.#` topic exchange. Dedicated `auditConsumer` writes to PostgreSQL | Audit as a cross-cutting concern via events, not direct calls from features |
+| 10 | **OpenTelemetry tracing** | `@effect/opentelemetry` + `Effect.withSpan` on service methods. Export to Jaeger/Tempo | v4 has improved OTel support. Distributed tracing across Effect workflows |
+
+### Mapping to Plan Review Issues
+
+The 3 critical and 2 medium issues from plan self-review are addressed:
+
+| Review Issue | Suggestion # | Status |
+|---|---|---|
+| (1) `effectHandler` R channel typed as `never` | #12 | Addressed in Phase 3 |
+| (2) `HealthCheckError` not in `AppError` union | #7 | Addressed in Phase 4 |
+| (3) `ParseError` not mapped to `ValidationError` | (inline fix) | Add `ParseError` → `ValidationError` mapping in `effectHandler` |
+| (4) `helpers/crypto.ts` missing migration task | (inline fix) | Already in folder structure, add explicit task in Phase 5 |
+| (5) `tokenService.ts`, `authMiddleware.ts`, `userModel.ts` missing tasks | (inline fix) | Already in folder structure, add explicit tasks in Phase 5 |
+
+---
+
+## Effect v4 Verification Checklist
+
+Items to verify when Effect v4 reaches stable release (beta APIs may shift):
+
+- [ ] Confirm `Context.Service` is the final API name (not `Effect.Service`)
+- [ ] Confirm `Context.Reference` is the final API name and pattern (class-based with `defaultValue`)
+- [ ] Confirm `ManagedRuntime.make` still exists and works the same way
+- [ ] Confirm `.Default` layer naming (may become `.layer` in final release)
+- [ ] Confirm `Data.TaggedError` still exists in the `Data` module
+- [ ] Verify `Effect.provideService` works for `Context.Reference` values (replaces `Effect.locally`)
+- [ ] Test Schema APIs used: `Schema.pattern`, `Schema.minLength`, `Schema.optionalWith`, `Schema.Class`, `Schema.decodeUnknown`
+- [ ] Verify `JSONSchema.make()` still works for Fastify JSON Schema generation
+- [ ] Confirm `Match.value` + `Match.tag` + `Match.exhaustive` pattern unchanged
+- [ ] Verify `Effect.acquireRelease` signature unchanged
+- [ ] Test `Logger.replace(Logger.defaultLogger, ...)` for Pino integration
+- [ ] Confirm ecosystem packages use single version number (install `effect@4.x` only)
