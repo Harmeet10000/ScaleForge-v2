@@ -80,7 +80,62 @@
         - Favor modern JavaScript features (ES2020+), including optional chaining (`?.`) and nullish coalescing (`??`).
         - Use destructuring for objects and arrays where it improves readability.
         - Always use Functional Programming principles over OOP.
+        - Use the `using` declaration for managing disposable resources with automatic cleanup.
     </general-rules>
+
+    <using-declaration>
+        The `using` declaration declares block-scoped local variables that are synchronously disposed. It ensures resources are automatically cleaned up when the scope exits.
+
+        **Basic Syntax**:
+        ```javascript
+        using resource = new Resource();
+        // resource[Symbol.dispose]() is called when scope exits
+        ```
+
+        **Requirements**:
+        - The resource must have a `[Symbol.dispose]()` method.
+        - The variable must be initialized (cannot be reassigned like `const`).
+        - The value can be `null`, `undefined`, or an object with `[Symbol.dispose]()`.
+
+        **Usage Contexts**:
+        - **In a block**: Resource is disposed when exiting the block.
+          ```javascript
+          {
+            using resource = new Resource();
+            console.log(resource.getValue());
+            // resource disposed here
+          }
+          ```
+        - **In a function**: Resource is disposed before the function returns.
+          ```javascript
+          function example() {
+            using resource = new Resource();
+            return resource.getValue();
+            // resource disposed before return
+          }
+          ```
+        - **In a for...of loop**: Resource is disposed on each iteration.
+          ```javascript
+          const resources = [new Resource(), new Resource()];
+          for (using resource of resources) {
+            console.log(resource.getValue());
+            // resource disposed at end of each iteration
+          }
+          ```
+        - **Multiple resources**: Disposed in reverse order of declaration.
+          ```javascript
+          using resource1 = new Resource();
+          using resource2 = new Resource();
+          // resource2 disposed first, then resource1
+          ```
+
+        **Important Notes**:
+        - Cannot be used at the top level of a script (only in modules, functions, or blocks).
+        - Cannot be used in `for...in` loops or at the top level of switch statements.
+        - All disposers are guaranteed to run, even if errors occur (similar to `finally` blocks).
+        - If a resource is captured by a closure, it will be disposed when the scope exits, not when the closure is called.
+        - Use `DisposableStack` for manual resource management while maintaining the same error handling guarantees.
+    </using-declaration>
 
     <code-style>
         - Follow the configurations in `eslint.config.js` and `.prettierrc`.
@@ -117,70 +172,59 @@
         - Apply validation middleware in the routes, before the controller handler.
     </input-validation>
 
-    <database>
-        - All database interactions must go through the repository layer (`/repository`).
-        - Define Mongoose schemas in `/models` with proper types, validation (`required`, `trim`, `maxlength`), and indexes.
-        - Use `.lean()` for read-only queries to improve performance.
-        - Use `.select()` to limit the fields returned from a query.
-        - Example Schema:
-            ```javascript
-            const userSchema = new mongoose.Schema({
-              name: { type: String, required: true, trim: true },
-              email: { type: String, required: true, unique: true, lowercase: true, index: true }
-            }, { timestamps: true });
-            ```
-    </database>
 
-    <caching>
-        - **General Pattern**:
-            1. Check for data in the Redis cache first using `getCache` or `getHash`.
-            2. If cache miss, fetch data from the database (via repository).
-            3. Store the result in Redis using `setCache` or `setHash` with a reasonable expiry time (TTL).
-            4. When data is updated or deleted, invalidate/clear the corresponding Redis cache key(s) using `deleteCache` or `deleteHash`.
-        - **Redis Data Types and Use Cases**: Use the appropriate Redis data type for the task at hand. The functions in `src/helpers/redisFunctions.js` are designed for these specific use cases.
-            - **String (`setCache`, `getCache`)**:
-                - **When to Use**: Most basic and common. Use for caching single values, simple objects (as JSON), or JWT tokens.
-            - **Hash (`setHash`, `getHash`)**:
-                - **When to Use**: Caching objects with multiple fields, like a user profile (`id`, `name`, `email`). Great for partial reads/updates.
-            - **List (`pushToList`, `getListItems`)**:
-                - **When to Use**: Caching ordered sequences of items, like a list of recent notifications or an activity feed.
-            - **Set (e.g., `addToSet`, `getSetMembers`)**:
-                - **When to Use**: Caching unique, unordered items (no duplicates), like online user IDs or a user's permissions.
-            - **Sorted Set (e.g., `addToSortedSet`, `getSortedSetRange`)**:
-                - **When to Use**: Caching items with a score for ranking, like leaderboards or trending topics.
-    </caching>
 
-    <security>
-        - Use the `authMiddleware` for protecting routes that require authentication.
-        - Use the `permissionsMiddleware` for fine-grained authorization checks.
-        - Never store secrets or sensitive data directly in the code. Use environment variables.
         - Always validate and sanitize user input to prevent injection attacks.
         - Follow OWASP Top 10 best practices.
-    </security>
 
 
-    <environment>
-        - Use the `dotenv` package to manage environment variables.
-        - The `.env.development` file is used for the development environment.
-        - Ensure all sensitive keys (API keys, database URIs, JWT secrets) are stored in environment variables and never committed to the repository.
-    </environment>
 
-    <documentation>
-        - API documentation is managed using Swagger.
-        - Update the JSDoc comments in the routes files to reflect new or changed API endpoints.
-        - Generate the final Swagger documentation using the `npm run swagger` script.
-    </documentation>
+
 </implementation-details>
 
 <development-workflow>
-    <!-- <testing>
-        - Write unit tests for all services and critical utility functions.
-        - Write integration tests for all API endpoints.
-        - Organize all test files in the `test/` directory.
-        - Use `node:test` for the test runner and `node:assert` for assertions.
-        - Structure tests using `describe`, `it`, `before`, and `after` blocks.
-    </testing> -->
+    <testing>
+        <strategy>
+            Choose the right test type based on project phase and complexity:
+        </strategy>
 
+        <unit-tests>
+            **Best For**: Early project phases and exceptionally complex, narrow functions.
+            - Use at the start of a project to help get things moving.
+            - Ideal for functions with high complexity where logic is hard to get right on the first try.
+            - **Caution**: Avoid becoming too attached to unit tests. They break frequently when implementation changes, making refactoring difficult.
+            - Write unit tests for critical utility functions and complex business logic.
+        </unit-tests>
+
+        <integration-tests>
+            **The "Sweet Spot"**: The ideal balance for most scenarios.
+            - High-level enough to test system correctness.
+            - Low-level enough to be easy to debug with a good debugger.
+            - Focus on these as the code begins to firm up and the system stabilizes.
+            - Write integration tests for all API endpoints.
+            - Test interactions between services, repositories, and the database.
+        </integration-tests>
+
+        <e2e-tests>
+            **Best For**: Demonstrating that the whole system works end-to-end.
+            - Keep this suite small and well-curated.
+            - Focus strictly on the most common UI features and a few critical edge cases.
+            - Avoid excessive E2E tests—too many become impossible to maintain and end up being ignored.
+        </e2e-tests>
+
+        <regression-tests>
+            **Best For**: Bug fixes and preventing regressions.
+            - When a bug is found, first reproduce it with a regression test.
+            - Then fix the bug while ensuring the test passes.
+            - This ensures the bug doesn't resurface in future changes.
+        </regression-tests>
+
+        <implementation>
+            - Organize all test files in the `test/` directory.
+            - Use `node:test` for the test runner and `node:assert` for assertions.
+            - Structure tests using `describe`, `it`, `before`, and `after` blocks.
+        </implementation>
+    </testing>
 
     <code-review-checklist>
         - [ ] Follows existing patterns and architecture.
@@ -214,69 +258,4 @@
 </copilot-instructions>
 ````
 
-[byterover-mcp]
 
-[byterover-mcp]
-
-# Byterover MCP Server Tools Reference
-
-There are two main workflows with Byterover tools and recommended tool call strategies that you **MUST** follow precisely.
-
-## Onboarding workflow
-
-If users particularly ask you to start the onboarding process, you **MUST STRICTLY** follow these steps.
-
-1. **ALWAYS USE** **byterover-check-handbook-existence** first to check if the byterover handbook already exists. If not, You **MUST** call **byterover-create-handbook** to create the byterover handbook.
-2. If the byterover handbook already exists, first you **MUST** USE **byterover-check-handbook-sync** to analyze the gap between the current codebase and the existing byterover handbook.
-3. Then **IMMEDIATELY USE** **byterover-update-handbook** to update these changes to the byterover handbook.
-4. During the onboarding, you **MUST** use **byterover-list-modules** **FIRST** to get the available modules, and then **byterover-store-modules** and **byterover-update-modules** if there are new modules or changes to existing modules in the project.
-
-## Planning workflow
-
-Based on user request, you **MUST** follow these sequences of tool calls
-
-1. If asked to continue an unfinished implementation, **CALL** **byterover-retrieve-active-plans** to find the most relevant active plan.
-2. **CRITICAL PLAN PERSISTENCE RULE**: Once a user approves a plan, you **MUST IMMEDIATELY CALL** **byterover-save-implementation-plan** to save it.
-3. Throughout the plan, you **MUST** run **byterover-retrieve-knowledge** several times to retrieve sufficient knowledge and context for the plan's tasks.
-4. In addition, you might need to run **byterover-search-modules** and **byterover-update-modules** if the tasks require or update knowledge about certain modules. However, **byterover-retrieve-knowledge** should **ALWAYS** be considered **FIRST**.
-5. **MUST** use **byterover-update-plan-progress** to mark tasks (and then the whole plan) as completed.
-   Example:
-
-- Task: `byterover-update-plan-progress(plan_name="Feature X", task_name="Task 1", is_completed=true)`
-- All done: `byterover-update-plan-progress(plan_name="Feature X", is_completed=true)`
-
-6. Then, you might call **byterover-store-knowledge** to save knowledge and experience implemented throughout the plan or in important tasks.
-7. During the plan's implementation, you **MUST** frequently call **byterover-think-about-collected-information** and **byterover-assess-context-completeness** to make sure you're on the right track and gather sufficient context for the tasks.
-
-## Recommended Workflow Sequence
-
-1. **MOST IMPORTANT**: **ALWAYS USE** **byterover-retrieve-knowledge** once or several times for **EACH TASK** of the plan to gather necessary context for complete that task.
-2. **MOST IMPORTANT**: **ALWAYS USE** **byterover-store-knowledge** once or several times to store critical knowledge and context for future implementations
-3. Over 15 provided tools, **byterover-retrieve-knowledge** and **byterover-store-knowledge** ARE the two main tools, which **MUST** be used regularly. You can use these two main tools outside the two main workflows for retrieval and storage purposes.
-4. You **MUST** include phrases like **"According to Byterover memory layer"**, **"Based on memory extracted from Byterover"**, **"From Byterover memomry tools"**, ... to explictly showcase that these sources are from **Byterover**.
-5. **Implementation & Progress Tracking** → Execute implementation following saved plan → Mark tasks complete as you go → Mark entire plan done when all tasks finished.
-6. You **MUST** use **byterover-update-module** **IMMEDIATELY** on changes to the module's purposes, technical details, or critical insights that essential for future implementations.
-
-[byterover-mcp]
-
-[byterover-mcp]
-
-You are given two tools from Byterover MCP server, including
-
-## 1. `byterover-store-knowledge`
-
-You `MUST` always use this tool when:
-
-- Learning new patterns, APIs, or architectural decisions from the codebase
-- Encountering error solutions or debugging techniques
-- Finding reusable code patterns or utility functions
-- Completing any significant task or plan implementation
-
-## 2. `byterover-retrieve-knowledge`
-
-You `MUST` always use this tool when:
-
-- Starting any new task or implementation to gather relevant context
-- Before making architectural decisions to understand existing patterns
-- When debugging issues to check for previous solutions
-- Working with unfamiliar parts of the codebase
