@@ -1,5 +1,5 @@
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert';
+
+import { describe, it, beforeAll, afterAll, expect } from 'bun:test'
 import { spawn } from 'child_process';
 import { setTimeout } from 'timers/promises';
 
@@ -8,7 +8,7 @@ describe('Health Endpoints - E2E Tests', () => {
   let baseUrl;
   const port = 8001; // Use different port for E2E tests
 
-  before(async () => {
+  beforeAll(async () => {
     // Set environment variables for E2E testing
     process.env.NODE_ENV = 'test';
     process.env.PORT = port.toString();
@@ -38,7 +38,7 @@ describe('Health Endpoints - E2E Tests', () => {
     }
   });
 
-  after(async () => {
+  afterAll(async () => {
     // Clean up server process
     if (serverProcess) {
       serverProcess.kill('SIGTERM');
@@ -63,27 +63,27 @@ describe('Health Endpoints - E2E Tests', () => {
     it('should perform complete health check workflow', async () => {
       // Step 1: Check if server is alive
       const selfResponse = await fetch(`${baseUrl}/api/v1/health/self`);
-      assert.strictEqual(selfResponse.status, 200);
+      expect(selfResponse.status).toBe(200);
 
       const selfData = await selfResponse.json();
-      assert.strictEqual(selfData.success, true);
-      assert.strictEqual(selfData.data.server, 'e2e-test-server');
+      expect(selfData.success).toBe(true);
+      expect(selfData.data.server).toBe('e2e-test-server');
 
       // Step 2: Perform comprehensive health check
       const healthResponse = await fetch(`${baseUrl}/api/v1/health/health`);
-      assert.strictEqual(healthResponse.status, 200);
+      expect(healthResponse.status).toBe(200);
 
       const healthData = await healthResponse.json();
-      assert.strictEqual(healthData.success, true);
-      assert.ok(healthData.data.checks);
-      assert.ok(healthData.data.application);
-      assert.ok(healthData.data.system);
+      expect(healthData.success).toBe(true);
+      expect(healthData.data.checks).toBeTruthy();
+      expect(healthData.data.application).toBeTruthy();
+      expect(healthData.data.system).toBeTruthy();
 
       // Step 3: Verify all health checks have status
       const { checks } = healthData.data;
       ['database', 'redis', 'memory', 'disk'].forEach((checkName) => {
-        assert.ok(checks[checkName]);
-        assert.ok(typeof checks[checkName].status === 'string');
+        expect(checks[checkName]).toBeTruthy();
+        expect(typeof checks[checkName].status === 'string').toBeTruthy();
         assert.ok(['healthy', 'unhealthy', 'warning'].includes(checks[checkName].status));
       });
     });
@@ -96,7 +96,7 @@ describe('Health Endpoints - E2E Tests', () => {
           await setTimeout(index * 100); // Stagger requests
 
           const response = await fetch(`${baseUrl}/api/v1/health/self`);
-          assert.strictEqual(response.status, 200);
+          expect(response.status).toBe(200);
 
           const data = await response.json();
           return data.data.timestamp;
@@ -105,9 +105,9 @@ describe('Health Endpoints - E2E Tests', () => {
       const timestamps = await Promise.all(healthCheckRequests);
 
       // Verify all requests succeeded and returned unique timestamps
-      assert.strictEqual(timestamps.length, 20);
+      expect(timestamps.length).toBe(20);
       const uniqueTimestamps = new Set(timestamps);
-      assert.ok(uniqueTimestamps.size >= 15); // Allow some timestamp collisions
+      expect(uniqueTimestamps.size >= 15).toBeTruthy(); // Allow some timestamp collisions
     });
 
     it('should maintain consistent response format across requests', async () => {
@@ -117,14 +117,14 @@ describe('Health Endpoints - E2E Tests', () => {
       ]);
 
       for (const response of responses) {
-        assert.strictEqual(response.status, 200);
-        assert.strictEqual(response.headers.get('content-type'), 'application/json; charset=utf-8');
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toBe('application/json; charset=utf-8');
 
         const data = await response.json();
-        assert.strictEqual(typeof data.success, 'boolean');
-        assert.strictEqual(typeof data.statusCode, 'number');
-        assert.strictEqual(typeof data.message, 'string');
-        assert.strictEqual(typeof data.data, 'object');
+        expect(typeof data.success).toBe('boolean');
+        expect(typeof data.statusCode).toBe('number');
+        expect(typeof data.message).toBe('string');
+        expect(typeof data.data).toBe('object');
       }
     });
   });
@@ -136,7 +136,7 @@ describe('Health Endpoints - E2E Tests', () => {
       const response = await fetch(`${baseUrl}/api/v1/health/health`);
       const responseTime = Date.now() - startTime;
 
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
       assert.ok(responseTime < 2000, `Health check took ${responseTime}ms, should be under 2000ms`);
     });
 
@@ -149,14 +149,14 @@ describe('Health Endpoints - E2E Tests', () => {
       const responses = await Promise.all(requests);
 
       responses.forEach((response, index) => {
-        assert.strictEqual(response.status, 200, `Request ${index} failed`);
+        expect(response.status).toBe(200, `Request ${index} failed`);
       });
 
       // Verify all responses are valid JSON
       const jsonResponses = await Promise.all(responses.map((response) => response.json()));
 
       jsonResponses.forEach((data, index) => {
-        assert.strictEqual(data.success, true, `Response ${index} not successful`);
+        expect(data.success).toBe(true, `Response ${index} not successful`);
         assert.ok(data.data.timestamp, `Response ${index} missing timestamp`);
       });
     });
@@ -206,10 +206,10 @@ describe('Health Endpoints - E2E Tests', () => {
 
       for (const endpoint of invalidEndpoints) {
         const response = await fetch(`${baseUrl}${endpoint}`);
-        assert.strictEqual(response.status, 404);
+        expect(response.status).toBe(404);
 
         const data = await response.json();
-        assert.strictEqual(data.success, false);
+        expect(data.success).toBe(false);
       }
     });
 
@@ -234,8 +234,8 @@ describe('Health Endpoints - E2E Tests', () => {
 
       if (response.status === 200) {
         const metricsText = await response.text();
-        assert.ok(metricsText.includes('# HELP'));
-        assert.ok(metricsText.includes('# TYPE'));
+        expect(metricsText.includes('# HELP').toBeTruthy());
+        expect(metricsText.includes('# TYPE').toBeTruthy());
       } else {
         // Metrics endpoint might not be enabled in test environment
         assert.ok([404, 405].includes(response.status));
@@ -244,14 +244,14 @@ describe('Health Endpoints - E2E Tests', () => {
 
     it('should include response time headers for monitoring', async () => {
       const response = await fetch(`${baseUrl}/api/v1/health/self`);
-      assert.strictEqual(response.status, 200);
+      expect(response.status).toBe(200);
 
       const responseTimeHeader = response.headers.get('x-response-time');
       if (responseTimeHeader) {
-        assert.ok(responseTimeHeader.includes('ms'));
+        expect(responseTimeHeader.includes('ms').toBeTruthy());
         const responseTime = parseFloat(responseTimeHeader);
-        assert.ok(responseTime >= 0);
-        assert.ok(responseTime < 1000); // Should be under 1 second
+        expect(responseTime >= 0).toBeTruthy();
+        expect(responseTime < 1000).toBeTruthy(); // Should be under 1 second
       }
     });
   });

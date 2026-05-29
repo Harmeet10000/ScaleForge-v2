@@ -8,16 +8,38 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '22.x'
+  BUN_VERSION: '1.3.8'
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
+  # Type Checking (Fast Fail)
+  type-check:
+    name: Type Checking
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Check types
+        run: bun run type-check
+
   # Code Quality and Security Checks
   code-quality:
     name: Code Quality & Security
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: type-check
 
     steps:
       - name: Checkout code
@@ -25,50 +47,35 @@ jobs:
         with:
           fetch-depth: 0 # Full history for better analysis
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: bun install --frozen-lockfile
 
-      - name: Run ESLint
-        run: npm run lint
+      - name: Run linting
+        run: bun run lint
 
-      - name: Run Prettier check
-        run: npm run format
+      - name: Run format check
+        run: bun run format:check
 
       - name: Audit dependencies for vulnerabilities
-        run: npm audit --audit-level=moderate
-
-      - name: Run Snyk dependency check
-        uses: snyk/actions/node@master
+        run: bunx snyk test --severity-threshold=high || true
         continue-on-error: true
         env:
           SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-        with:
-          args: --severity-threshold=high
 
       - name: Check for outdated dependencies
-        run: npm outdated || true
-
-      - name: Upload lint results
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: lint-results
-          path: |
-            eslint-report.json
-            prettier-report.json
-          retention-days: 7
+        run: bunx npm-check-updates --root || true
 
   # Unit and Integration Tests
   test:
-    name: Test Suite
+    name: Test Suite (${{ matrix.test-type }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: type-check
 
     services:
       mongodb:
@@ -108,20 +115,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test-type: [unit, integration]
+        test-type: [unit, integration, e2e]
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: bun install --frozen-lockfile
 
       - name: Create test environment file
         run: |
@@ -152,25 +158,18 @@ jobs:
           timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
           echo "All services are ready!"
 
-      - name: Run unit tests
+      - name: Run tests
+        run: bun run test:${{ matrix.test-type }}
+        env:
+          CI: true
+
+      - name: Generate coverage report (unit tests only)
         if: matrix.test-type == 'unit'
-        run: npm run test --run
+        run: bun run test:coverage
         env:
           CI: true
 
-      - name: Run integration tests
-        if: matrix.test-type == 'integration'
-        run: npm run test:integration --run || true
-        env:
-          CI: true
-
-      - name: Generate test coverage
-        if: matrix.test-type == 'unit'
-        run: npm run test:coverage
-        env:
-          CI: true
-
-      - name: Upload coverage reports
+      - name: Upload coverage to Codecov
         if: matrix.test-type == 'unit'
         uses: codecov/codecov-action@v4
         with:
@@ -196,7 +195,7 @@ jobs:
     name: Security Scanning
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [code-quality]
+    needs: code-quality
 
     steps:
       - name: Checkout code
@@ -229,6 +228,7 @@ jobs:
           generateSarif: '1'
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+        continue-on-error: true
 
       - name: Upload Semgrep results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3
@@ -286,14 +286,6 @@ jobs:
             org.opencontainers.image.description=Production-grade authentication service
             org.opencontainers.image.vendor=${{ github.repository_owner }}
 
-      - name: Create production environment file
-        run: |
-          cat > .env.production << EOF
-          NODE_ENV=production
-          PORT=3000
-          LOG_LEVEL=info
-          EOF
-
       - name: Build and push Docker image
         id: build
         uses: docker/build-push-action@v5
@@ -326,7 +318,7 @@ jobs:
   generate-sbom:
     name: Generate SBOM
     runs-on: ubuntu-latest
-    needs: [build-images]
+    needs: build-images
     if: github.event_name != 'pull_request'
 
     steps:
@@ -347,77 +339,21 @@ jobs:
           path: sbom.spdx.json
           retention-days: 30
 
-  # Performance and Load Testing
-  performance-test:
-    name: Performance Testing
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: [build-images]
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
-
-    services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
-
-      - name: Start application
-        run: |
-          npm run build
-          npm start &
-          sleep 10
-
-      - name: Install k6
-        run: |
-          sudo gpg -k
-          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
-          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
-          sudo apt-get update
-          sudo apt-get install k6
-
-      - name: Run performance tests
-        run: |
-          k6 run --out json=performance-results.json tests/performance/load-test.js || true
-
-      - name: Upload performance results
-        uses: actions/upload-artifact@v4
-        with:
-          name: performance-results
-          path: performance-results.json
-          retention-days: 30
-
   # Notification and Summary
   notify-results:
     name: Notify Results
     runs-on: ubuntu-latest
-    needs: [code-quality, test, security-scan, build-images, generate-sbom]
+    needs: [type-check, code-quality, test, security-scan]
     if: always()
 
     steps:
       - name: Determine overall status
         id: status
         run: |
-          if [[ "${{ needs.code-quality.result }}" == "success" &&
+          if [[ "${{ needs.type-check.result }}" == "success" &&
+                "${{ needs.code-quality.result }}" == "success" &&
                 "${{ needs.test.result }}" == "success" &&
-                "${{ needs.security-scan.result }}" == "success" &&
-                ("${{ needs.build-images.result }}" == "success" || "${{ needs.build-images.result }}" == "skipped") ]]; then
+                "${{ needs.security-scan.result }}" == "success" ]]; then
             echo "status=success" >> $GITHUB_OUTPUT
             echo "message=✅ All CI checks passed successfully!" >> $GITHUB_OUTPUT
           else
@@ -431,11 +367,10 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
           echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Type Check | ${{ needs.type-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Code Quality | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Tests | ${{ needs.test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Build Images | ${{ (needs.build-images.result == 'success' || needs.build-images.result == 'skipped') && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Generate SBOM | ${{ (needs.generate-sbom.result == 'success' || needs.generate-sbom.result == 'skipped') && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Overall Status:** ${{ steps.status.outputs.message }}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

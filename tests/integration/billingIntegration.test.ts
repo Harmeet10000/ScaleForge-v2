@@ -1,11 +1,11 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
-import assert from 'node:assert';
+
+import { describe, it, beforeAll, afterAll, beforeEach, expect } from 'bun:test'
 import request from 'supertest';
-import app from '../../src/app.js';
-import { connectDB, disconnectDB } from '../../src/connections/connectDB.js';
-import { BillingProfile } from '../../src/models/billingProfileModel.js';
-import { Subscription } from '../../src/models/subscriptionModel.js';
-import { Invoice } from '../../src/models/invoiceModel.js';
+import app from '../../src/app';
+import { connectDB, disconnectDB } from '../../src/connections/connectDB';
+import { BillingProfile } from '../../src/models/billingProfileModel';
+import { Subscription } from '../../src/models/subscriptionModel';
+import { Invoice } from '../../src/models/invoiceModel';
 
 describe('Billing Integration Tests', () => {
   let authToken;
@@ -13,7 +13,7 @@ describe('Billing Integration Tests', () => {
   let testSubscriptionId;
   let testBillingProfileId;
 
-  before(async () => {
+  beforeAll(async () => {
     // Connect to test database
     await connectDB();
 
@@ -35,7 +35,7 @@ describe('Billing Integration Tests', () => {
     authToken = loginResponse.body.data.accessToken;
   });
 
-  after(async () => {
+  afterAll(async () => {
     // Clean up test data
     await BillingProfile.deleteMany({ customerId: testCustomerId });
     await Subscription.deleteMany({ customerId: testCustomerId });
@@ -82,10 +82,10 @@ describe('Billing Integration Tests', () => {
         .send(billingProfileData)
         .expect(201);
 
-      assert.strictEqual(response.body.success, true);
-      assert.strictEqual(response.body.message, 'Billing profile created successfully');
-      assert.ok(response.body.data.billingProfile);
-      assert.strictEqual(response.body.data.billingProfile.customerId, testCustomerId);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Billing profile created successfully');
+      expect(response.body.data.billingProfile).toBeTruthy();
+      expect(response.body.data.billingProfile.customerId).toBe(testCustomerId);
       assert.deepStrictEqual(
         response.body.data.billingProfile.billingAddress.street,
         billingProfileData.billingAddress.street
@@ -122,8 +122,8 @@ describe('Billing Integration Tests', () => {
         .send(billingProfileData)
         .expect(409);
 
-      assert.strictEqual(response.body.success, false);
-      assert.ok(response.body.message.includes('already exists'));
+      expect(response.body.success).toBe(false);
+      expect(response.body.message.includes('already exists').toBeTruthy());
     });
   });
 
@@ -149,11 +149,11 @@ describe('Billing Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      assert.strictEqual(response.body.success, true);
-      assert.strictEqual(response.body.message, 'Billing profile retrieved successfully');
-      assert.ok(response.body.data.billingProfile);
-      assert.strictEqual(response.body.data.billingProfile.customerId, testCustomerId);
-      assert.strictEqual(response.body.data.billingProfile.creditBalance, 100);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Billing profile retrieved successfully');
+      expect(response.body.data.billingProfile).toBeTruthy();
+      expect(response.body.data.billingProfile.customerId).toBe(testCustomerId);
+      expect(response.body.data.billingProfile.creditBalance).toBe(100);
     });
 
     it('should return 404 when billing profile not found', async () => {
@@ -164,8 +164,8 @@ describe('Billing Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(404);
 
-      assert.strictEqual(response.body.success, false);
-      assert.ok(response.body.message.includes('not found'));
+      expect(response.body.success).toBe(false);
+      expect(response.body.message.includes('not found').toBeTruthy());
     });
   });
 
@@ -204,15 +204,13 @@ describe('Billing Integration Tests', () => {
         .send(paymentMethodData)
         .expect(200);
 
-      assert.strictEqual(response.body.success, true);
-      assert.strictEqual(response.body.message, 'Payment method added successfully');
-      assert.ok(response.body.data.billingProfile);
-      assert.strictEqual(response.body.data.billingProfile.paymentMethods.length, 1);
-      assert.strictEqual(
-        response.body.data.billingProfile.paymentMethods[0].methodId,
-        'pm_test_123'
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Payment method added successfully');
+      expect(response.body.data.billingProfile).toBeTruthy();
+      expect(response.body.data.billingProfile.paymentMethods.length).toBe(1);
+      expect(response.body.data.billingProfile.paymentMethods[0].methodId).toBe('pm_test_123'
       );
-      assert.strictEqual(response.body.data.billingProfile.paymentMethods[0].isDefault, true);
+      expect(response.body.data.billingProfile.paymentMethods[0].isDefault).toBe(true);
     });
 
     it('should validate payment method data', async () => {
@@ -233,8 +231,8 @@ describe('Billing Integration Tests', () => {
         .send(invalidPaymentMethodData)
         .expect(400);
 
-      assert.strictEqual(response.body.success, false);
-      assert.ok(response.body.message.includes('Validation error'));
+      expect(response.body.success).toBe(false);
+      expect(response.body.message.includes('Validation error').toBeTruthy());
     });
   });
 
@@ -284,17 +282,17 @@ describe('Billing Integration Tests', () => {
         .send(invoiceData)
         .expect(201);
 
-      assert.strictEqual(response.body.success, true);
-      assert.strictEqual(response.body.message, 'Invoice generated successfully');
-      assert.ok(response.body.data.invoice);
-      assert.ok(response.body.data.invoice.metadata.invoiceData);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Invoice generated successfully');
+      expect(response.body.data.invoice).toBeTruthy();
+      expect(response.body.data.invoice.metadata.invoiceData).toBeTruthy();
 
       const invoiceMetadata = response.body.data.invoice.metadata.invoiceData;
-      assert.strictEqual(invoiceMetadata.subtotal, 1000);
-      assert.strictEqual(invoiceMetadata.taxAmount, 180); // 18% of 1000
-      assert.strictEqual(invoiceMetadata.creditApplied, 50);
-      assert.strictEqual(invoiceMetadata.total, 1180);
-      assert.strictEqual(invoiceMetadata.amountDue, 1130); // 1180 - 50
+      expect(invoiceMetadata.subtotal).toBe(1000);
+      expect(invoiceMetadata.taxAmount).toBe(180); // 18% of 1000
+      expect(invoiceMetadata.creditApplied).toBe(50);
+      expect(invoiceMetadata.total).toBe(1180);
+      expect(invoiceMetadata.amountDue).toBe(1130); // 1180 - 50
     });
 
     it('should return existing invoice for idempotent request', async () => {
@@ -318,7 +316,7 @@ describe('Billing Integration Tests', () => {
 
       // Note: In a real scenario, idempotency would be based on correlation ID
       // For this test, we're just checking that the service handles the request
-      assert.ok(response2.body.data.invoice);
+      expect(response2.body.data.invoice).toBeTruthy();
     });
   });
 
@@ -366,15 +364,15 @@ describe('Billing Integration Tests', () => {
         .send(prorationData)
         .expect(201);
 
-      assert.strictEqual(response.body.success, true);
-      assert.strictEqual(response.body.message, 'Proration invoice generated successfully');
-      assert.ok(response.body.data.invoice);
-      assert.ok(response.body.data.invoice.metadata.invoiceData);
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Proration invoice generated successfully');
+      expect(response.body.data.invoice).toBeTruthy();
+      expect(response.body.data.invoice.metadata.invoiceData).toBeTruthy();
 
       const invoiceMetadata = response.body.data.invoice.metadata.invoiceData;
-      assert.strictEqual(invoiceMetadata.type, 'proration_invoice');
-      assert.ok(invoiceMetadata.prorationDetails);
-      assert.ok(invoiceMetadata.prorationDetails.remainingDays > 0);
+      expect(invoiceMetadata.type).toBe('proration_invoice');
+      expect(invoiceMetadata.prorationDetails).toBeTruthy();
+      expect(invoiceMetadata.prorationDetails.remainingDays > 0).toBeTruthy();
     });
   });
 
@@ -391,10 +389,10 @@ describe('Billing Integration Tests', () => {
         .send(recurringData)
         .expect(200);
 
-      assert.strictEqual(response.body.success, true);
-      assert.strictEqual(response.body.message, 'Recurring billing dry run completed');
-      assert.ok(response.body.data.results);
-      assert.ok(typeof response.body.data.results.total === 'number');
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Recurring billing dry run completed');
+      expect(response.body.data.results).toBeTruthy();
+      expect(typeof response.body.data.results.total === 'number').toBeTruthy();
     });
   });
 
@@ -431,12 +429,12 @@ describe('Billing Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      assert.strictEqual(response.body.success, true);
-      assert.strictEqual(response.body.message, 'Customer invoices retrieved successfully');
-      assert.ok(response.body.data.invoices);
-      assert.ok(response.body.data.pagination);
-      assert.strictEqual(response.body.data.invoices.length, 1);
-      assert.strictEqual(response.body.data.invoices[0].invoiceNumber, 'INV-TEST-001');
+      expect(response.body.success).toBe(true);
+      expect(response.body.message).toBe('Customer invoices retrieved successfully');
+      expect(response.body.data.invoices).toBeTruthy();
+      expect(response.body.data.pagination).toBeTruthy();
+      expect(response.body.data.invoices.length).toBe(1);
+      expect(response.body.data.invoices[0].invoiceNumber).toBe('INV-TEST-001');
     });
 
     it('should filter invoices by status', async () => {
@@ -445,10 +443,10 @@ describe('Billing Integration Tests', () => {
         .set('Authorization', `Bearer ${authToken}`)
         .expect(200);
 
-      assert.strictEqual(response.body.success, true);
-      assert.ok(response.body.data.invoices);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.invoices).toBeTruthy();
       response.body.data.invoices.forEach((invoice) => {
-        assert.strictEqual(invoice.status, 'pending');
+        expect(invoice.status).toBe('pending');
       });
     });
   });
@@ -459,7 +457,7 @@ describe('Billing Integration Tests', () => {
         .get(`/api/v1/billing/profiles/${testCustomerId}`)
         .expect(401);
 
-      assert.strictEqual(response.body.success, false);
+      expect(response.body.success).toBe(false);
     });
 
     it('should validate request parameters', async () => {
@@ -469,7 +467,7 @@ describe('Billing Integration Tests', () => {
         .send({})
         .expect(400);
 
-      assert.strictEqual(response.body.success, false);
+      expect(response.body.success).toBe(false);
     });
   });
 });

@@ -2,13 +2,14 @@ name: Run Tests
 
 on:
   push:
-    branches: [js-mongoDB]
+    branches: [js-mongoDB, main, develop]
   pull_request:
-    branches: [js-mongoDB]
+    branches: [js-mongoDB, main, develop]
   workflow_dispatch:
 
 env:
   NODE_ENV: test
+  BUN_VERSION: '1.3.8'
 
 jobs:
   test:
@@ -17,7 +18,7 @@ jobs:
 
     services:
       mongodb:
-        image: mongo:6
+        image: mongo:7
         ports:
           - 27017:27017
         options: >-
@@ -27,7 +28,7 @@ jobs:
           --health-retries 5
 
       redis:
-        image: redis:alpine
+        image: redis:7-alpine
         ports:
           - 6379:6379
         options: >-
@@ -37,7 +38,7 @@ jobs:
           --health-retries 5
 
       rabbitmq:
-        image: rabbitmq:3-management
+        image: rabbitmq:3-management-alpine
         ports:
           - 5672:5672
           - 15672:15672
@@ -50,74 +51,35 @@ jobs:
           RABBITMQ_DEFAULT_USER: test
           RABBITMQ_DEFAULT_PASS: test
 
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: [22.x]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
+          bun-version: ${{ env.BUN_VERSION }}
 
       - name: Install dependencies
-        run: npm ci --prefer-offline --no-audit
+        run: bun install --frozen-lockfile
 
-      - name: Create .env.dev file
+      - name: Create .env.test file
         run: |
-          cat > .env.dev << EOF
+          cat > .env.test << EOF
           NODE_ENV=test
-          PORT=${{ secrets.PORT }}
-          SERVER_URL=${{ secrets.SERVER_URL }}
-          FRONTEND_URL=${{ secrets.FRONTEND_URL }}
-          DATABASE=${{ secrets.DATABASE }}
-          DB_POOL_SIZE=${{ secrets.DB_POOL_SIZE }}
-          MIGRATE_MONGO_URI=${{ secrets.MIGRATE_MONGO_URI }}
-          MIGRATE_AUTOSYNC=${{ secrets.MIGRATE_AUTOSYNC }}
-          REDIS_HOST=${{ secrets.REDIS_HOST }}
-          REDIS_PORT=${{ secrets.REDIS_PORT }}
-          REDIS_USERNAME=${{ secrets.REDIS_USERNAME }}
-          REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}
-          RABBITMQ_URL=${{ secrets.RABBITMQ_URL }}
-          RABBITMQ_PRIVATE_URL=${{ secrets.RABBITMQ_PRIVATE_URL }}
-          RABBITMQ_NODENAME=${{ secrets.RABBITMQ_NODENAME }}
-          RABBITMQ_DEFAULT_USER=${{ secrets.RABBITMQ_DEFAULT_USER }}
-          RABBITMQ_DEFAULT_PASS=${{ secrets.RABBITMQ_DEFAULT_PASS }}
-          KAFKA_BROKER=${{ secrets.KAFKA_BROKER }}
-          KAFKA_USERNAME=${{ secrets.KAFKA_USERNAME }}
-          KAFKA_PASSWORD=${{ secrets.KAFKA_PASSWORD }}
-          KAFKA_TOPIC=${{ secrets.KAFKA_TOPIC }}
-          KAFKA_SERVICE_URI=${{ secrets.KAFKA_SERVICE_URI }}
-          KAFKA_HOST=${{ secrets.KAFKA_HOST }}
-          KAFKA_PORT=${{ secrets.KAFKA_PORT }}
-          KAFKA_SSL_CA_CERT=${{ secrets.KAFKA_SSL_CA_CERT }}
-          KAFKA_SSL_CERT=${{ secrets.KAFKA_SSL_CERT }}
-          KAFKA_SSL_KEY=${{ secrets.KAFKA_SSL_KEY }}
-          KAFKA_SSL_ENABLED=${{ secrets.KAFKA_SSL_ENABLED }}
-          ACCESS_TOKEN_SECRET=${{ secrets.ACCESS_TOKEN_SECRET }}
-          REFRESH_TOKEN_SECRET=${{ secrets.REFRESH_TOKEN_SECRET }}
-          ACCESS_TOKEN_EXPIRY=${{ secrets.ACCESS_TOKEN_EXPIRY }}
-          REFRESH_TOKEN_EXPIRY=${{ secrets.REFRESH_TOKEN_EXPIRY }}
-          RESEND_KEY=${{ secrets.RESEND_KEY }}
-          LOG_LEVEL=${{ secrets.LOG_LEVEL }}
-          S3_BACKUP_ENABLED=${{ secrets.S3_BACKUP_ENABLED }}
-          S3_BUCKET_NAME=${{ secrets.S3_BUCKET_NAME }}
-          AWS_REGION=${{ secrets.AWS_REGION }}
-          S3_PREFIX=${{ secrets.S3_PREFIX }}
-          BUCKET_NAME=${{ secrets.BUCKET_NAME }}
-          BUCKET_REGION=${{ secrets.BUCKET_REGION }}
-          ACCESS_KEY=${{ secrets.ACCESS_KEY }}
-          SECRET_ACCESS_KEY=${{ secrets.SECRET_ACCESS_KEY }}
-          RUN_BACKUP_ONCE=${{ secrets.RUN_BACKUP_ONCE }}
-          GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-          GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-          GOOGLE_REDIRECT_URIS=${{ secrets.GOOGLE_REDIRECT_URIS }}
+          PORT=3000
+          SERVER_URL=http://localhost:3000
+          FRONTEND_URL=http://localhost:3001
+          DATABASE=mongodb://localhost:27017/auth_test
+          DB_POOL_SIZE=10
+          REDIS_HOST=localhost
+          REDIS_PORT=6379
+          RABBITMQ_URL=amqp://test:test@localhost:5672
+          ACCESS_TOKEN_SECRET=test_access_secret_key_for_ci
+          REFRESH_TOKEN_SECRET=test_refresh_secret_key_for_ci
+          ACCESS_TOKEN_EXPIRY=15m
+          REFRESH_TOKEN_EXPIRY=7d
+          LOG_LEVEL=error
           EOF
 
       - name: Wait for services
@@ -130,32 +92,34 @@ jobs:
           timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
           echo "All services are ready!"
 
+      - name: Run type check
+        run: bun run type-check
+
       - name: Lint code
-        run: npm run lint
+        run: bun run lint
 
       - name: Run tests
-        run: npm run test
+        run: bun run test
         env:
           CI: true
 
       - name: Generate test coverage
-        if: matrix.node-version == '20.x'
-        run: npm run test:coverage
+        run: bun run test:coverage
 
       - name: Upload coverage to Codecov
-        if: matrix.node-version == '20.x'
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage/lcov.info
           flags: unittests
           name: codecov-umbrella
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
 
       - name: Archive test results
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-${{ matrix.node-version }}
+          name: test-results
           path: |
             test-results.xml
             coverage/

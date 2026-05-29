@@ -1,57 +1,6 @@
 ````xml
 <copilot-instructions>
 
-<project-overview>
-    This is a production-grade authentication service built with Node.js, Express, MongoDB, and Redis. The codebase follows enterprise-level patterns with a focus on security, scalability, and maintainability.
-</project-overview>
-
-<project-structure>
-    <directory-organization>
-    ```
-    src/
-    ├── connections/         # Database and external service connections (e.g., Redis, Mongoose)
-    ├── constants/           # Application constants and enums
-    ├── features/            # Feature-first layout: each feature contains its controllers, services, routes, models, repository, validations
-    │   ├── auth/
-    │   │   ├── authConstants.js
-    │   │   ├── authController.js
-    │   │   ├── authMiddleware.js
-    │   │   ├── authRepository.js
-    │   │   ├── authRoutes.js
-    │   │   ├── authService.js
-    │   │   ├── authValidation.js
-    │   │   └── userModel.js
-    │   ├── health/
-    │   │   ├── healthController.js
-    │   │   └── healthRoutes.js
-    │   ├── notifications/
-    │   │   ├── deviceModel.js
-    │   │   ├── notificationController.js
-    │   │   ├── notificationLogModel.js
-    │   │   ├── notificationPreferencesModel.js
-    │   │   ├── notificationRepository.js
-    │   │   ├── notificationRoutes.js
-    │   │   └── notificationService.js
-    │   ├── payments/
-    │   ├── permissions/
-    │   ├── search/
-    │   ├── storage/
-    │   └── subscription/
-    ├── controllers/         # Cross-cutting controllers (if any) and thin adapters
-    ├── helpers/             # Utility functions for specific services (email, kafka, redis helpers)
-    ├── middlewares/         # Global middleware (error handler, server middleware)
-    ├── models/              # Shared or cross-feature Mongoose schemas
-    ├── repository/          # Shared repositories or data-access helpers
-    ├── routes/              # Route composition and API versioning (mounting feature routers)
-    ├── services/            # Shared services used across features
-    ├── utils/               # General, reusable utility functions (e.g., logger, httpError)
-    ├── validations/         # Shared Joi schemas and validation helpers
-    ├── app.js               # Express app configuration
-    └── index.js             # Application entry point
-    ```
-    </directory-organization>
-</project-structure>
-
 <architecture>
     <general-principles>
         - Follow best practices for enterprise-grade applications.

@@ -1,6 +1,6 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert';
 
+
+import { describe, it, beforeEach, afterEach, expect } from 'bun:test'
 describe('Health Controller - Unit Tests', () => {
   let mockReq, mockRes;
 
@@ -49,14 +49,12 @@ describe('Health Controller - Unit Tests', () => {
       try {
         const controller = await import('../../src/features/health/healthController.js');
 
-        assert.ok(typeof controller.self === 'function', 'self function should be exported');
-        assert.ok(typeof controller.health === 'function', 'health function should be exported');
+        expect(typeof controller.self === 'function').toBeTruthy();
+        expect(typeof controller.health === 'function').toBeTruthy();
 
         // Verify function signatures (they should accept req, res parameters)
-        assert.strictEqual(controller.self.length, 2, 'self function should accept 2 parameters');
-        assert.strictEqual(
-          controller.health.length,
-          2,
+        expect(controller.self.length).toBe(2, 'self function should accept 2 parameters');
+        expect(controller.health.length).toBe(2,
           'health function should accept 2 parameters'
         );
       } catch (error) {
@@ -71,15 +69,15 @@ describe('Health Controller - Unit Tests', () => {
       process.env.SERVER_ID = 'test-server';
       process.env.HOSTNAME = 'test-host';
 
-      assert.strictEqual(process.env.SERVER_ID, 'test-server');
-      assert.strictEqual(process.env.HOSTNAME, 'test-host');
+      expect(process.env.SERVER_ID).toBe('test-server');
+      expect(process.env.HOSTNAME).toBe('test-host');
 
       // Test with environment variables unset
       delete process.env.SERVER_ID;
       delete process.env.HOSTNAME;
 
-      assert.strictEqual(process.env.SERVER_ID, undefined);
-      assert.strictEqual(process.env.HOSTNAME, undefined);
+      expect(process.env.SERVER_ID).toBe(undefined);
+      expect(process.env.HOSTNAME).toBe(undefined);
     });
 
     it('should validate timestamp generation', () => {
@@ -88,11 +86,11 @@ describe('Health Controller - Unit Tests', () => {
       const afterTime = new Date().toISOString();
 
       // Verify ISO string format
-      assert.ok(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(testTime));
+      expect(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(testTime).toBeTruthy());
 
       // Verify timestamp ordering
-      assert.ok(beforeTime <= testTime);
-      assert.ok(testTime <= afterTime);
+      expect(beforeTime <= testTime).toBeTruthy();
+      expect(testTime <= afterTime).toBeTruthy();
     });
   });
 
@@ -105,10 +103,10 @@ describe('Health Controller - Unit Tests', () => {
         timestamp: new Date().toISOString()
       };
 
-      assert.ok(typeof expectedSelfResponse.server === 'string');
-      assert.ok(typeof expectedSelfResponse.container === 'string');
-      assert.ok(typeof expectedSelfResponse.timestamp === 'string');
-      assert.ok(new Date(expectedSelfResponse.timestamp).getTime() > 0);
+      expect(typeof expectedSelfResponse.server === 'string').toBeTruthy();
+      expect(typeof expectedSelfResponse.container === 'string').toBeTruthy();
+      expect(typeof expectedSelfResponse.timestamp === 'string').toBeTruthy();
+      expect(new Date(expectedSelfResponse.timestamp).toBeTruthy().getTime() > 0);
     });
 
     it('should validate expected response structure for health endpoint', () => {
@@ -142,14 +140,14 @@ describe('Health Controller - Unit Tests', () => {
       };
 
       // Validate structure
-      assert.ok(typeof expectedHealthResponse.application === 'object');
-      assert.ok(typeof expectedHealthResponse.system === 'object');
-      assert.ok(typeof expectedHealthResponse.checks === 'object');
-      assert.ok(typeof expectedHealthResponse.timestamp === 'string');
+      expect(typeof expectedHealthResponse.application === 'object').toBeTruthy();
+      expect(typeof expectedHealthResponse.system === 'object').toBeTruthy();
+      expect(typeof expectedHealthResponse.checks === 'object').toBeTruthy();
+      expect(typeof expectedHealthResponse.timestamp === 'string').toBeTruthy();
 
       // Validate checks structure
       Object.values(expectedHealthResponse.checks).forEach((check) => {
-        assert.ok(typeof check.status === 'string');
+        expect(typeof check.status === 'string').toBeTruthy();
         assert.ok(['healthy', 'unhealthy', 'warning'].includes(check.status));
       });
     });
@@ -162,7 +160,7 @@ describe('Health Controller - Unit Tests', () => {
       // Controller functions with their dependencies (httpResponse, quicker utils)
       // are better tested in the integration test suite where we can test
       // the actual HTTP endpoints with real responses
-      assert.ok(true, 'Full controller tests moved to integration suite');
+      expect(true).toBeTruthy();
     });
   });
 });
