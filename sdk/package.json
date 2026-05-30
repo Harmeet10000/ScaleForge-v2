@@ -1,0 +1,25 @@
+{
+  "name": "@scaleforge/sdk",
+  "version": "0.1.0",
+  "description": "Auto-generated TypeScript SDK for the ScaleForge API",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "generate": "openapi-ts",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@hey-api/client-fetch": "^0.6.0"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.52.0",
+    "typescript": "^5.4.0"
+  }
+}

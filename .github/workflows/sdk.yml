@@ -1,0 +1,49 @@
+name: SDK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/app/**"
+      - "scripts/exportOpenApiSpec.ts"
+  workflow_dispatch:
+
+jobs:
+  generate:
+    name: Generate & publish SDK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install root deps
+        run: bun install --frozen-lockfile
+
+      - name: Export OpenAPI spec
+        run: bun run scripts/exportOpenApiSpec.ts --out sdk/openapi.json
+
+      - name: Install SDK deps
+        run: bun install --frozen-lockfile
+        working-directory: sdk
+
+      - name: Generate SDK
+        run: bun run generate
+        working-directory: sdk
+
+      - name: Build SDK
+        run: bun run build
+        working-directory: sdk
+
+      - name: Publish to GitHub Packages
+        run: |
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" > ~/.npmrc
+          npm publish --registry=https://npm.pkg.github.com
+        working-directory: sdk
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

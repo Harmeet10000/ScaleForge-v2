@@ -54,6 +54,8 @@
     "load:load":     "k6 run tests/load/k6/scenarios/load.js",
     "load:stress":   "k6 run tests/load/k6/scenarios/stress.js",
     "load:spike":    "k6 run tests/load/k6/scenarios/spike.js",
+    "sdk:export":    "bun run scripts/exportOpenApiSpec.ts --out sdk/openapi.json",
+    "sdk:generate":  "bun run sdk:export && cd sdk && bun run generate",
     "backup:start": "bun run scripts/dbBackup.js",
     "backup:once": "RUN_BACKUP_ONCE=true bun run scripts/dbBackup.js",
     "security:test": "bunx snyk test",
