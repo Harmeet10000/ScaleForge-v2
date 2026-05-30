@@ -7,7 +7,7 @@ export interface SentryService {
   readonly captureMessage: (message: string, level?: "info" | "warning" | "error") => void
 }
 
-export const SentryService = Context.GenericTag<SentryService>("@infra/SentryService")
+export const SentryService = Context.Service<SentryService>("@infra/SentryService")
 
 const make = Effect.gen(function* () {
   const config = yield* AppConfig

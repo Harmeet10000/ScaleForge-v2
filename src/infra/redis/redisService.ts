@@ -12,9 +12,10 @@ export interface RedisService {
   readonly hset: (key: string, field: string, value: string, ttl?: number) => Effect.Effect<void, RedisCommandError>
   readonly hdel: (key: string, field: string) => Effect.Effect<number, RedisCommandError>
   readonly isConnected: () => boolean
+  readonly ping: () => Effect.Effect<"PONG", RedisCommandError>
 }
 
-export const RedisService = Context.GenericTag<RedisService>("@infra/RedisService")
+export const RedisService = Context.Service<RedisService>("@infra/RedisService")
 
 const make = Effect.gen(function* () {
   const config = yield* AppConfig
@@ -91,7 +92,12 @@ const make = Effect.gen(function* () {
         catch: (error) => new RedisCommandError({ command: "HDEL", cause: error }),
       }),
     isConnected: () => client.status === "ready",
+    ping: () =>
+      Effect.tryPromise({
+        try: () => client.ping(),
+        catch: (error) => new RedisCommandError({ command: "PING", cause: error }),
+      }).pipe(Effect.as("PONG" as const)),
   })
 })
 
-export const RedisServiceLive = Layer.scoped(RedisService, make)
+export const RedisServiceLive = Layer.effect(RedisService, make)

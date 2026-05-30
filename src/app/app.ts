@@ -13,6 +13,7 @@ import fastifyBridgePlugin from "../runtime/fastifyBridge.ts"
 import { securityPlugin } from "./plugins/security.ts"
 import { rateLimitPlugin } from "./plugins/rateLimiting.ts"
 import { metricsRoutes } from "./features/metrics/metricsRoutes.ts"
+import { healthRoutes } from "./features/health/healthRoutes.ts"
 import { adminFeatureFlagRoutes } from "./features/admin/featureFlagRoutes.ts"
 import { webhookRoutes } from "./features/webhooks/webhookRoutes.ts"
 
@@ -24,7 +25,7 @@ export const buildApp = async () => {
     trustProxy: true,
   })
 
-  // ── Core plugins ────────────────────────────────────────────────────────────
+  // ── Core plugins ─────────────────────────────────────────────────────────────
   // 1. Effect runtime decorator (must be first — routes depend on it)
   await fastify.register(fastifyBridgePlugin)
 
@@ -53,17 +54,15 @@ export const buildApp = async () => {
     uiConfig: { docExpansion: "none", filter: true },
   })
 
-  // ── Routes ───────────────────────────────────────────────────────────────────
+  // ── Routes ────────────────────────────────────────────────────────────────────
   // Prometheus scrape (no /api/v1 prefix, no auth)
   await fastify.register(metricsRoutes)
 
   // Versioned API prefix
   await fastify.register(async (api) => {
-    // Feature flag admin
+    await api.register(healthRoutes)
     await api.register(adminFeatureFlagRoutes)
-    // Outbound webhooks
     await api.register(webhookRoutes)
-    // TODO (Phase 4): await api.register(healthRoutes)
     // TODO (Phase 5): await api.register(authRoutes)
   }, { prefix: "/api/v1" })
 

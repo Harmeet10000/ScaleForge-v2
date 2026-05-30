@@ -50,7 +50,7 @@ export interface AppConfig {
   readonly observability: { readonly lokiHost: string }
 }
 
-export const AppConfig = Context.GenericTag<AppConfig>("@config/AppConfig")
+export const AppConfig = Context.Service<AppConfig>("@config/AppConfig")
 
 const make = Effect.gen(function* () {
   // Server

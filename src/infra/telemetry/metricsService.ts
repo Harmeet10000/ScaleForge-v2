@@ -8,7 +8,7 @@ export interface MetricsService {
   readonly messagesPublished: Counter
 }
 
-export const MetricsService = Context.GenericTag<MetricsService>("@infra/MetricsService")
+export const MetricsService = Context.Service<MetricsService>("@infra/MetricsService")
 
 const make = Effect.sync(() => {
   const registry = new Registry()

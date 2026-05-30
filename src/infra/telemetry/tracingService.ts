@@ -8,7 +8,7 @@ export interface TracingService {
   readonly sdk: NodeSDK
 }
 
-export const TracingService = Context.GenericTag<TracingService>("@infra/TracingService")
+export const TracingService = Context.Service<TracingService>("@infra/TracingService")
 
 const make = Effect.gen(function* () {
   const config = yield* AppConfig
@@ -30,4 +30,4 @@ const make = Effect.gen(function* () {
   return TracingService.of({ sdk })
 })
 
-export const TracingServiceLive = Layer.scoped(TracingService, make)
+export const TracingServiceLive = Layer.effect(TracingService, make)

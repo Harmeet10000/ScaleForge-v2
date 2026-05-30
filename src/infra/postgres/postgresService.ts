@@ -9,7 +9,7 @@ export interface PostgresService {
   readonly query: <T>(queryFn: (db: NeonHttpDatabase) => Promise<T>) => Effect.Effect<T, PostgresQueryError>
 }
 
-export const PostgresService = Context.GenericTag<PostgresService>("@infra/PostgresService")
+export const PostgresService = Context.Service<PostgresService>("@infra/PostgresService")
 
 const make = Effect.gen(function* () {
   const config = yield* AppConfig

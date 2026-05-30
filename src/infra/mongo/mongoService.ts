@@ -6,9 +6,10 @@ import { MongoConnectionError } from "../../core/errors/infraErrors.ts"
 export interface MongoService {
   readonly connection: mongoose.Connection
   readonly isConnected: () => boolean
+  readonly ping: () => Effect.Effect<"PONG", MongoConnectionError>
 }
 
-export const MongoService = Context.GenericTag<MongoService>("@infra/MongoService")
+export const MongoService = Context.Service<MongoService>("@infra/MongoService")
 
 const make = Effect.gen(function* () {
   const config = yield* AppConfig
@@ -39,7 +40,12 @@ const make = Effect.gen(function* () {
   return MongoService.of({
     connection: conn.connection,
     isConnected: () => mongoose.connection.readyState === 1,
+    ping: () =>
+      Effect.tryPromise({
+        try: () => mongoose.connection.db!.command({ ping: 1 }),
+        catch: (error) => new MongoConnectionError({ cause: error }),
+      }).pipe(Effect.as("PONG" as const)),
   })
 })
 
-export const MongoServiceLive = Layer.scoped(MongoService, make)
+export const MongoServiceLive = Layer.effect(MongoService, make)

@@ -14,7 +14,7 @@ export interface EmailService {
   readonly send: (params: EmailSendParams) => Effect.Effect<void, EmailSendError>
 }
 
-export const EmailService = Context.GenericTag<EmailService>("@infra/EmailService")
+export const EmailService = Context.Service<EmailService>("@infra/EmailService")
 
 const make = Effect.gen(function* () {
   const config = yield* AppConfig

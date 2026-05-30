@@ -9,7 +9,7 @@ export interface FeatureFlagService {
   readonly invalidate: (key: string) => Effect.Effect<void>
 }
 
-export const FeatureFlagService = Context.GenericTag<FeatureFlagService>("@infra/FeatureFlagService")
+export const FeatureFlagService = Context.Service<FeatureFlagService>("@infra/FeatureFlagService")
 
 // 30-second TTL, max 500 entries (Decision #77)
 const makeCache = () =>

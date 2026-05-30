@@ -12,7 +12,7 @@ export interface RabbitMQService {
   readonly isConnected: () => boolean
 }
 
-export const RabbitMQService = Context.GenericTag<RabbitMQService>("@infra/RabbitMQService")
+export const RabbitMQService = Context.Service<RabbitMQService>("@infra/RabbitMQService")
 
 const connectWithRetry = (url: string) =>
   Effect.retry(
@@ -72,4 +72,4 @@ const make = Effect.gen(function* () {
   })
 })
 
-export const RabbitMQServiceLive = Layer.scoped(RabbitMQService, make)
+export const RabbitMQServiceLive = Layer.effect(RabbitMQService, make)
