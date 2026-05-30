@@ -1,0 +1,9 @@
+environment         = "prod"
+azure_location      = "Central India"
+db_sku              = "GP_Standard_D4s_v3"
+db_storage_mb       = 131072
+db_username         = "sf2_prod"
+redis_capacity      = 3
+app_image           = "sf2prodregistry.azurecr.io/scaleforge-v2:prod-latest"
+app_cpu             = 2.0
+app_memory          = "4Gi"

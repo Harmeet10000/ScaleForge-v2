@@ -822,3 +822,165 @@ export const CACHE_KEY_PATTERNS = {
    ✅ Error Resilience: CDC failures don't crash the application
    ✅ Configurable: Polling interval and replication strategy customizable
    ✅ Audit Logging: All CDC operations logged for debugging
+
+---
+
+## Planned v2 Architecture
+
+The v1 CDC plan above uses OOP classes, `lodash.debounce`, and polling loops. The v2 design below replaces all of that with Effect fibers, `async-cache-dedupe`, proper `for...of` patterns, and a `Set`-based deduplication strategy.
+
+### What Changes in v2
+
+| v1 Approach | v2 Replacement | Reason |
+|---|---|---|
+| `class CDCService` | `Context.Service` Effect layer | Consistent with rest of v2 architecture |
+| `class CacheUpdateWorker` | Effect fiber (`Effect.fork`) | Supervised lifecycle; auto-restart on failure |
+| `lodash.debounce` | `Effect.schedule` + `Queue.dropping` | No Lodash dep; cancellation-safe |
+| `this.pendingUpdates = new Map()` (unbounded) | `lru-cache` with `max: 5000` | Memory-safe; evicts stale pending updates |
+| `setInterval` polling | `Effect.repeat(Schedule.spaced(...))` | Cancellation-safe; integrates with Effect interruption |
+| `amqplib` direct | `RabbitMQService` Effect layer | Consistent infra layer; auto-reconnect via `acquireRelease` |
+| `redis.createClient` direct | `RedisService` Effect layer | Same reason |
+| `for (const [k,v] of updates.entries())` ✅ | Keep `for...of` | Already idiomatic |
+| `debounce(() => flushUpdates(), 500)` | `Queue.dropping` + `Stream.debounce(Duration.millis(500))` | Effect-native; never leaks on shutdown |
+| `Array.filter(unique)` | `new Set(arr)` | O(n) not O(n²) |
+| `arr.indexOf(x) !== -1` | `arr.includes(x)` or `set.has(x)` | Readable; O(1) for Set |
+
+### v2 Core Design
+
+```typescript
+// src/workers/cdcWorker.ts
+// CDC as an Effect-native fiber worker — separate process entry point
+
+import { Effect, Layer, Queue, Stream, Schedule, Duration } from 'effect'
+import { MongoService } from '../infra/mongo/mongoService.ts'
+import { RabbitMQService } from '../infra/rabbitmq/rabbitMqService.ts'
+import { RedisService } from '../infra/redis/redisService.ts'
+import { LRUCache } from 'lru-cache'
+
+// Bounded dedup map — replaces unbounded this.pendingUpdates
+const pendingUpdates = new LRUCache<string, CDCChange>({
+  max: 5_000,
+  ttl: 30_000,  // drop if not flushed within 30s
+})
+
+// ─── CDC Change Stream (MongoDB) ──────────────────────────────────────────────
+const watchCollection = (collectionName: string) =>
+  Effect.gen(function* () {
+    const mongo = yield* MongoService
+    const rmq   = yield* RabbitMQService
+
+    const stream = mongo.watchCollection(collectionName, [
+      { $match: { operationType: { $in: ['insert', 'update', 'replace', 'delete'] } } }
+    ])
+
+    // for...of over async iterable (Effect Stream)
+    yield* Stream.runForEach(stream, (change) =>
+      rmq.publish('cache-updates', `cache.${collectionName}.${change.operationType}`, change)
+    )
+  })
+
+// ─── Cache Update Worker (PostgreSQL CDC via polling) ─────────────────────────
+const WATCHED_TABLES = new Set(['users', 'payments', 'subscriptions', 'audit_entries'])
+
+const pollTableChanges = (tableName: string) =>
+  Effect.gen(function* () {
+    const redis = yield* RedisService
+    const db    = yield* PostgresService
+
+    const lastSyncKey = `cdc:sync:${tableName}`
+    const lastSync    = yield* redis.get(lastSyncKey)
+    const since       = lastSync ? new Date(lastSync) : new Date(Date.now() - 60_000)
+
+    const changes = yield* db.query(
+      `SELECT * FROM ${tableName} WHERE updated_at > $1 ORDER BY updated_at ASC LIMIT 1000`,
+      [since]
+    )
+
+    // for...of — never indexed loop
+    for (const change of changes) {
+      const cacheKey = `${tableName}:${change.id}`
+      pendingUpdates.set(cacheKey, change)  // LRU dedup
+    }
+
+    yield* redis.set(lastSyncKey, new Date().toISOString())
+  })
+
+// ─── Debounced flush using Effect Queue ───────────────────────────────────────
+const flushPending = Effect.gen(function* () {
+  const redis = yield* RedisService
+
+  // snapshot + clear atomically
+  const entries = [...pendingUpdates.entries()]
+  pendingUpdates.clear()
+
+  for (const [cacheKey, change] of entries) {
+    yield* updateRedisCache(redis, cacheKey, change)
+  }
+})
+
+// ─── Allowed status values — Set for O(1) membership testing ──────────────────
+const VALID_OPERATIONS = new Set(['insert', 'update', 'replace', 'delete'] as const)
+
+const updateRedisCache = (redis: RedisService, key: string, change: CDCChange) =>
+  Effect.gen(function* () {
+    if (!VALID_OPERATIONS.has(change.operationType)) return
+
+    if (change.operationType === 'delete') {
+      yield* redis.del(key)
+    } else {
+      yield* redis.setEx(key, 3600, JSON.stringify(change.fullDocument ?? change.updateDescription))
+    }
+  })
+
+// ─── Main CDC fiber ───────────────────────────────────────────────────────────
+export const cdcFiber = Effect.gen(function* () {
+  // Watch all tables via polling (Neon-compatible)
+  const pollers = [...WATCHED_TABLES].map((table) =>  // Set → Array for map
+    Effect.repeat(
+      pollTableChanges(table),
+      Schedule.spaced(Duration.millis(5_000))
+    )
+  )
+
+  // Debounced flush — runs 500ms after last batch of changes
+  const flusher = Effect.repeat(
+    flushPending,
+    Schedule.spaced(Duration.millis(500))
+  )
+
+  yield* Effect.all([...pollers, flusher], { concurrency: 'unbounded' })
+})
+```
+
+### v2 async-cache-dedupe Integration
+
+For external API calls inside CDC handlers (e.g. fetching full subscription data after a status change), use `async-cache-dedupe` to prevent N concurrent fetches for the same entity:
+
+```typescript
+import { createCache } from 'async-cache-dedupe'
+
+// Deduplicates concurrent subscription fetches triggered by CDC
+const subscriptionFetcher = createCache({ ttl: 2, stale: 0 })
+subscriptionFetcher.define('byId', async (subscriptionId: string) => {
+  const { body } = await undici.request(`/api/v1/subscriptions/${subscriptionId}`)
+  return body.json()
+})
+
+// In CDC handler — safe to call N times concurrently, only 1 HTTP call made
+const sub = await subscriptionFetcher.byId(change.after.subscription_id)
+```
+
+### v2 Infrastructure Changes
+
+- CDC worker runs as a **separate process** (`src/workers/cdcWorker.ts`) with its own `ManagedRuntime`
+- Same `appLayer` composition as other workers — shares `RedisService`, `RabbitMQService`, `PostgresService` layer definitions
+- Docker: add `cdc-worker` container (same image, different `CMD`)
+- Kubernetes: `CronJob` for polling-based CDC; `Deployment` for stream-based CDC
+- Terraform: see `terraform/modules/workers/` for worker container config
+
+### What Stays the Same from v1
+
+- Cache key patterns (`CACHE_KEY_PATTERNS` constants) — same naming scheme
+- Routing key pattern: `cache.{collection}.{operationType}` — same RabbitMQ topology
+- Dual strategy (polling for Neon/serverless, logical replication for traditional PG) — same env var gating
+- 5-minute TTL on RabbitMQ messages — same safety net

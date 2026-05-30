@@ -2278,6 +2278,682 @@ Details to be specified when implementation begins.
 
 ---
 
+## Phase 6.1: Leaderboard Module (WebSocket + Real-Time Rankings)
+
+### Context and Key Decisions
+
+The prototype in `docs/WS-leaderboard/` is a useful reference but has several design conflicts with the v2 architecture. The design below supersedes it.
+
+**Package decision: `@fastify/websocket` (NOT Socket.IO)**
+
+| Factor | Socket.IO | @fastify/websocket |
+|---|---|---|
+| Polling fallback | Yes (not needed — all clients are web-tech) | No |
+| Client ACK pattern | Yes (not needed — backend-only writes) | Manual via protocol |
+| Fastify hook integration | No (sits outside lifecycle) | Yes (PASETO auth hooks apply naturally) |
+| Effect service wrapping | Awkward (event emitter model) | Clean (plain WS connection = Effect stream) |
+| Redis adapter for multi-server | @socket.io/redis-adapter | Redis pub/sub (already in stack) |
+| Client library required | Yes (43KB, proprietary protocol) | No (native browser/React Native/Electron WS) |
+
+Conclusion: Socket.IO's two value props (polling fallback, ACK) are both irrelevant here. `@fastify/websocket` integrates with existing Fastify + Effect architecture without friction.
+
+**Score semantics: replace (latest wins)**
+Backend is the only writer. Clients never submit scores. Every score write is a `ZADD` overwrite — the user's rank reflects their most recent score, which can decrease.
+
+**Rolling windows: 24h, 7d, all-time**
+Three separate Redis sorted sets per leaderboard (`24h`, `7d`, `alltime`). Rolling windows (not fixed midnight resets). Source of truth is PostgreSQL event log with timestamps. Redis sets are a recomputed cache.
+
+**Leaderboard scope: generic/configurable**
+A leaderboard is identified by a `leaderboardId` string. Same infrastructure supports multiple boards (per-game, per-season, etc.) with no code changes.
+
+**Fan-out: debounced delta broadcast**
+After a ranking recomputation, compare the new top-N snapshot to the previously broadcast snapshot. Only push to clients if the ranking has meaningfully changed (configurable threshold: ≥1 rank position shifted in top 50). This prevents broadcast storms.
+
+---
+
+### What the Prototype Gets Wrong (Design Conflicts)
+
+| Prototype | v2 Design | Reason |
+|---|---|---|
+| `socket.emit('submitScore')` from client | Removed entirely | Backend-only writes; client score submission is a security hole |
+| `max(currentScore, newScore)` | `ZADD key score userId` (overwrite) | Semantics are replace, not keep-max |
+| `ZINCRBY` in RedisService | Removed | Increment semantics contradict replace |
+| Single `leaderboard:scores` key | `leaderboard:{id}:alltime`, `leaderboard:{id}:24h`, `leaderboard:{id}:7d` | Rolling windows + multiple boards |
+| Batch writes discard timestamps | PostgreSQL event log stores `recorded_at` per event | Rolling window queries need timestamps |
+| 30s sync job: `Math.min(snapshot.length, 100)` | Full snapshot sync | Bug in prototype — only synced top 100 entries |
+| Broadcast on every `scoreUpdate` event | Debounced delta after 60s recomputation | Prevents broadcast storms at 5k+ updates/sec |
+| In-memory `UpdateQueue` (lost on crash) | Write to PostgreSQL event log first; Redis is cache | Event log is source of truth |
+| Socket.IO | `@fastify/websocket` | Tighter integration with Fastify + Effect |
+
+---
+
+### Architecture
+
+```
+Score Write Path (recommended: RabbitMQ, TBD)
+─────────────────────────────────────────────
+Backend Workers / Game Services
+  → publish to RabbitMQ: exchange=leaderboard, routing key=score.submitted
+  → LeaderboardWorker (separate process, shared Layer definitions)
+      → PostgreSQL: INSERT INTO leaderboard_events (user_id, leaderboard_id, score, recorded_at)
+      → Redis ZADD leaderboard:{id}:alltime score userId  (immediate, synchronous)
+
+Rolling Window Recomputation (Effect background fiber)
+──────────────────────────────────────────────────────
+Effect.repeat(recomputeWindowFiber, Schedule.fixed("60 seconds"))
+  → PostgreSQL DISTINCT ON (user_id) query for last 24h / last 7d
+  → Redis ZADD leaderboard:{id}:24h / :7d (full replace of sorted set)
+  → Compare new top-50 snapshot to lastBroadcastSnapshot
+  → If delta (≥1 rank shift): Redis PUBLISH leaderboard:{id}:updates { window, snapshot, changedAt }
+
+WebSocket Push Path
+───────────────────
+Client → GET /api/v1/ws/leaderboard (Fastify WS upgrade)
+  → Fastify onRequest hook: verify PASETO token → attach userId to request
+  → WS handler: receive subscribe/unsubscribe messages from client
+  → Redis SUBSCRIBE leaderboard:{id}:updates listener (per Fastify plugin instance)
+  → On pub/sub message: filter by subscribed leaderboards → push to matching connections
+
+REST Fallback (initial data fetch, no WS required)
+───────────────────────────────────────────────────
+GET /api/v1/leaderboard/:id?window=24h&page=1&pageSize=50
+  → Read from Redis sorted set (or PostgreSQL fallback)
+  → Returns paginated ranking
+```
+
+---
+
+### Folder Structure
+
+```
+src/features/leaderboard/
+  leaderboardSchema.ts          # Effect Schema: LeaderboardEntry, ScoreEvent, WsMessage types
+  leaderboardRepository.ts      # PostgreSQL queries (event log reads for rolling windows)
+  leaderboardService.ts         # Core Effect workflows: recordScore, getRanking, getUserRank
+  leaderboardWindowFiber.ts     # Background Effect fiber: rolling window recomputation + pub/sub publish
+  leaderboardRoutes.ts          # Fastify routes: REST GET + WS upgrade endpoint
+  leaderboardWsHandler.ts       # WS connection lifecycle: auth, subscribe, push, disconnect
+
+src/workers/leaderboard/
+  leaderboardWorkerMain.ts      # Separate process entry point
+  leaderboardConsumer.ts        # RabbitMQ consumer: receives score events, calls LeaderboardService
+```
+
+---
+
+### Database Schema (Drizzle)
+
+```typescript
+// db/schema/leaderboardEvents.ts
+import { pgTable, uuid, varchar, bigint, timestamp, index } from 'drizzle-orm/pg-core'
+
+export const leaderboardEvents = pgTable('leaderboard_events', {
+  id:            uuid('id').primaryKey().defaultRandom(),
+  leaderboardId: varchar('leaderboard_id', { length: 255 }).notNull(),
+  userId:        varchar('user_id', { length: 255 }).notNull(),
+  score:         bigint('score', { mode: 'number' }).notNull(),
+  recordedAt:    timestamp('recorded_at', { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  idxLeaderboardTime: index('idx_leaderboard_time').on(t.leaderboardId, t.recordedAt.desc()),
+  idxUserLeaderboard: index('idx_user_leaderboard').on(t.userId, t.leaderboardId),
+}))
+```
+
+**Why no single `leaderboard` table (current user → score mapping)?**
+The event log IS the source of truth. The current rank is always computed from the latest event per user within the time window. No separate "current score" row to keep in sync.
+
+---
+
+### Redis Key Schema
+
+```
+leaderboard:{leaderboardId}:alltime   ZSET  userId → score (updated on every write)
+leaderboard:{leaderboardId}:24h       ZSET  userId → score (rebuilt every 60s)
+leaderboard:{leaderboardId}:7d        ZSET  userId → score (rebuilt every 60s)
+
+leaderboard:{leaderboardId}:snapshot  STRING  JSON of last broadcast top-50 (delta comparison)
+
+leaderboard:{leaderboardId}:updates   PUBSUB CHANNEL  broadcast channel for WS fan-out
+```
+
+TTL policy: `24h` and `7d` sets have no TTL (overwritten on recomputation). If recomputation fiber dies, sets go stale — handled by WS health check metric.
+
+---
+
+### Effect Service Definitions
+
+```typescript
+// src/features/leaderboard/leaderboardService.ts
+import { Context, Effect, Schema } from 'effect'
+import type { LeaderboardRepository } from './leaderboardRepository'
+import type { RedisService } from '../../infra/redisService'
+
+export class LeaderboardService extends Context.Service<LeaderboardService>()(
+  'LeaderboardService',
+  {
+    effect: Effect.gen(function* () {
+      const redis = yield* RedisService
+      const repo  = yield* LeaderboardRepository
+
+      return {
+        // Write a score event. Backend workers call this only.
+        recordScore: (leaderboardId: string, userId: string, score: number) =>
+          Effect.gen(function* () {
+            // 1. Persist to event log (source of truth)
+            yield* repo.insertEvent({ leaderboardId, userId, score })
+            // 2. Update all-time Redis set immediately
+            yield* redis.zadd(`leaderboard:${leaderboardId}:alltime`, score, userId)
+            // 3. Rolling window sets updated by background fiber — not here
+          }),
+
+        // Read current ranking from Redis (fast path)
+        getRanking: (leaderboardId: string, window: '24h' | '7d' | 'alltime', page: number, pageSize: number) =>
+          redis.zrevrangeWithScores(
+            `leaderboard:${leaderboardId}:${window}`,
+            (page - 1) * pageSize,
+            page * pageSize - 1,
+          ),
+
+        // Get a single user's rank + score
+        getUserRank: (leaderboardId: string, window: '24h' | '7d' | 'alltime', userId: string) =>
+          Effect.all({
+            rank:  redis.zrevrank(`leaderboard:${leaderboardId}:${window}`, userId),
+            score: redis.zscore(`leaderboard:${leaderboardId}:${window}`, userId),
+          }),
+      }
+    }),
+  }
+) {}
+```
+
+```typescript
+// src/features/leaderboard/leaderboardWindowFiber.ts
+import { Effect, Schedule, Duration } from 'effect'
+
+// Recompute 24h and 7d sorted sets from PostgreSQL event log.
+// Run as a fiber inside ManagedRuntime — not a separate process.
+export const leaderboardWindowFiber = (leaderboardId: string) =>
+  Effect.gen(function* () {
+    const repo  = yield* LeaderboardRepository
+    const redis = yield* RedisService
+
+    // Fetch latest score per user in the rolling window
+    const [rows24h, rows7d] = yield* Effect.all([
+      repo.getLatestScoresInWindow(leaderboardId, Duration.hours(24)),
+      repo.getLatestScoresInWindow(leaderboardId, Duration.days(7)),
+    ])
+
+    // Rebuild sorted sets atomically (ZADD NX/XX not needed — full replace via DEL + ZADD pipeline)
+    yield* redis.rebuildSortedSet(`leaderboard:${leaderboardId}:24h`, rows24h)
+    yield* redis.rebuildSortedSet(`leaderboard:${leaderboardId}:7d`,  rows7d)
+
+    // Fetch new top-50 snapshot
+    const newSnapshot = yield* redis.zrevrangeWithScores(`leaderboard:${leaderboardId}:alltime`, 0, 49)
+
+    // Compare to last broadcast snapshot — only publish if delta
+    const lastSnapshot = yield* redis.get(`leaderboard:${leaderboardId}:snapshot`)
+    const hasChanged = hasMeaningfulDelta(lastSnapshot ? JSON.parse(lastSnapshot) : [], newSnapshot)
+
+    if (hasChanged) {
+      yield* redis.set(`leaderboard:${leaderboardId}:snapshot`, JSON.stringify(newSnapshot))
+      yield* redis.publish(`leaderboard:${leaderboardId}:updates`, {
+        window: 'alltime',
+        snapshot: newSnapshot,
+        changedAt: Date.now(),
+      })
+    }
+  }).pipe(
+    Effect.repeat(Schedule.fixed(Duration.seconds(60))),
+    Effect.catchAll((err) => Effect.logError('leaderboardWindowFiber error', err)),
+  )
+
+// A "meaningful delta" = at least 1 rank position changed in top 50
+function hasMeaningfulDelta(prev: RankEntry[], next: RankEntry[]): boolean {
+  if (prev.length !== next.length) return true
+  return prev.some((entry, i) => entry.userId !== next[i]?.userId)
+}
+```
+
+---
+
+### WebSocket Protocol (Client ↔ Server)
+
+Clients are read-only. No score submission over WS.
+
+```typescript
+// Client → Server messages (subscribe/unsubscribe only)
+type ClientMessage =
+  | { type: 'subscribe';   leaderboardId: string; windows: Array<'24h' | '7d' | 'alltime'> }
+  | { type: 'unsubscribe'; leaderboardId: string; windows: Array<'24h' | '7d' | 'alltime'> }
+  | { type: 'ping' }
+
+// Server → Client messages (pushed, not requested)
+type ServerMessage =
+  | { type: 'leaderboard_update'; leaderboardId: string; window: string; topN: RankEntry[]; changedAt: number }
+  | { type: 'user_rank_update';   leaderboardId: string; window: string; userId: string; rank: number; score: number }
+  | { type: 'pong' }
+  | { type: 'error'; code: string; message: string }
+```
+
+**Connection lifecycle:**
+1. Client connects to `GET /api/v1/ws/leaderboard` with PASETO token in `Authorization` header
+2. Fastify `onRequest` hook validates token → attaches `userId` to request context
+3. Client sends `subscribe` message → server joins them to Redis pub/sub channels
+4. Server pushes `leaderboard_update` on every meaningful delta broadcast
+5. On disconnect: unsubscribe from Redis channels, remove from presence map
+
+---
+
+### REST Endpoints
+
+For initial load and clients that don't need real-time:
+
+```
+GET  /api/v1/leaderboard/:id?window=alltime&page=1&pageSize=50
+  → reads from Redis sorted set (paginated)
+  → falls back to PostgreSQL if Redis miss
+
+GET  /api/v1/leaderboard/:id/user/:userId?window=24h
+  → returns { rank, score, window } for a specific user
+
+WS   /api/v1/ws/leaderboard
+  → upgrade endpoint (PASETO auth required)
+```
+
+---
+
+### Error Types
+
+```typescript
+// src/core/errors/leaderboardErrors.ts
+import { Data } from 'effect'
+
+export class LeaderboardNotFoundError extends Data.TaggedError('LeaderboardNotFoundError')<{
+  leaderboardId: string
+}> {}
+
+export class ScoreWriteError extends Data.TaggedError('ScoreWriteError')<{
+  leaderboardId: string
+  userId: string
+  cause: unknown
+}> {}
+
+export class WsAuthError extends Data.TaggedError('WsAuthError')<{
+  reason: string
+}> {}
+
+// Add all three to AppError union in core/errors/index.ts
+```
+
+---
+
+### Task List
+
+**Task 6.1.0: Install dependencies**
+```bash
+bun add @fastify/websocket ws
+bun add -d @types/ws
+```
+
+**Task 6.1.1: Database schema**
+- [ ] Create `db/schema/leaderboardEvents.ts` (schema above)
+- [ ] Add Drizzle migration: `bun drizzle-kit generate`
+- [ ] Commit: `feat(leaderboard): add leaderboard_events Drizzle schema`
+
+**Task 6.1.2: Core domain**
+- [ ] Create `src/core/errors/leaderboardErrors.ts` (3 errors above)
+- [ ] Add to `AppError` union in `src/core/errors/index.ts`
+- [ ] Create `src/features/leaderboard/leaderboardSchema.ts` (Effect Schema for all types)
+- [ ] Write unit tests in `tests/unit/leaderboard.test.ts` (schema validation, delta detection)
+- [ ] Commit: `feat(leaderboard): core domain types and errors`
+
+**Task 6.1.3: Repository**
+- [ ] Create `src/features/leaderboard/leaderboardRepository.ts`
+  - `insertEvent(event): Effect<void, ScoreWriteError, PostgresService>`
+  - `getLatestScoresInWindow(id, duration): Effect<RankEntry[], ..., PostgresService>` -- uses `DISTINCT ON (user_id) ORDER BY user_id, recorded_at DESC` filtered by window
+- [ ] Write integration tests (with real Postgres via `scripts/setup-test-env.sh`)
+- [ ] Commit: `feat(leaderboard): repository with event log and rolling window query`
+
+**Task 6.1.4: Redis operations**
+- [ ] Extend `RedisService` with:
+  - `zadd(key, score, member): Effect<number, ...>`
+  - `zrevrank(key, member): Effect<number | null, ...>`
+  - `zscore(key, member): Effect<number | null, ...>`
+  - `zrevrangeWithScores(key, start, stop): Effect<RankEntry[], ...>`
+  - `rebuildSortedSet(key, entries): Effect<void, ...>` -- DEL + ZADD pipeline
+  - `publish(channel, data): Effect<void, ...>`
+  - `subscribe(channel, handler): Effect<Scope, ...>` -- returns scope for cleanup
+
+**Task 6.1.5: LeaderboardService**
+- [ ] Create `src/features/leaderboard/leaderboardService.ts` (service above)
+- [ ] Unit tests for `recordScore`, `getRanking`, `getUserRank` with mocked Redis + Repo
+- [ ] Commit: `feat(leaderboard): core service workflows`
+
+**Task 6.1.6: Rolling window fiber**
+- [ ] Create `src/features/leaderboard/leaderboardWindowFiber.ts` (fiber above)
+- [ ] `hasMeaningfulDelta` logic with unit tests
+- [ ] Add fiber startup to `appLayer.ts` via `Layer.scopedDiscard(Effect.forkScoped(leaderboardWindowFiber(...)))`
+- [ ] Integration test: insert events, wait 60s (or trigger manually), verify Redis sets rebuilt
+- [ ] Commit: `feat(leaderboard): rolling window recomputation fiber with debounced delta broadcast`
+
+**Task 6.1.7: WebSocket handler**
+- [ ] Register `@fastify/websocket` plugin in `src/app.ts`
+- [ ] Create `src/features/leaderboard/leaderboardWsHandler.ts`:
+  - Parse and validate client messages via Effect Schema
+  - Redis `SUBSCRIBE` on subscribe messages (use `Scope` for cleanup on disconnect)
+  - Push server messages on pub/sub events
+  - `ping`/`pong` heartbeat to detect stale connections
+  - Per-user connection limit check via Redis presence (reuse auth-phase pattern)
+- [ ] Create `src/features/leaderboard/leaderboardRoutes.ts`:
+  - `GET /api/v1/leaderboard/:id` (REST ranking)
+  - `GET /api/v1/leaderboard/:id/user/:userId` (REST user rank)
+  - `GET /api/v1/ws/leaderboard` (WS upgrade)
+- [ ] Integration tests: WS connect → subscribe → trigger recompute → assert push received
+- [ ] Commit: `feat(leaderboard): WebSocket handler with PASETO auth and Redis pub/sub fan-out`
+
+**Task 6.1.8: Leaderboard worker (score write path — implement when score write source is decided)**
+- [ ] Create `src/workers/leaderboard/leaderboardConsumer.ts` -- RabbitMQ consumer
+- [ ] Create `src/workers/leaderboard/leaderboardWorkerMain.ts` -- worker entry point
+- [ ] Worker calls `LeaderboardService.recordScore` as an Effect workflow
+- [ ] Commit: `feat(leaderboard): RabbitMQ score consumer worker`
+
+---
+
+### Performance Notes
+
+| Operation | Implementation | Expected Latency |
+|---|---|---|
+| Score write (alltime) | Redis ZADD | <5ms |
+| Score write (event log) | PostgreSQL INSERT | <20ms |
+| Get top-50 | Redis ZREVRANGE | <5ms |
+| Rolling window rebuild | PostgreSQL DISTINCT ON query | <100ms for 50k users |
+| WS push latency | Redis pub/sub → WS send | <50ms end-to-end |
+| Fan-out @ 5k connections | Redis pub/sub → WS broadcast | ~200ms total |
+
+Rolling window rebuild every 60s is acceptable for this use case. If sub-second accuracy is needed in the future, move to event-sourced rank updates (increment-based approach with time-bucketed keys).
+
+---
+
+### Prototype Retention
+
+The `docs/WS-leaderboard/` directory is retained as design reference. The production implementation differs significantly. Do not copy-paste from `leaderboard-server.js` — use this plan as the source of truth.
+
+---
+
+## Phase 6.2: PDF Receipt & Payment Document Generation
+
+### Context
+
+Payment receipts/invoices must be generated as stamped, archivable PDFs — not just JSON. The generation pipeline is async (never blocks the HTTP response), uses a background job, caches results, and stores the final PDF in S3.
+
+### Tech Stack Decision
+
+| Concern | Choice | Reason |
+|---|---|---|
+| PDF rendering | `@react-pdf/renderer` or `pdfmake` | `@react-pdf/renderer` gives JSX-based layouts with type safety; `pdfmake` is simpler but less expressive |
+| Background job | `@platformatic/job-queue` | Already in deps; persistent queue backed by PostgreSQL; survives restarts |
+| Result cache | `lru-cache` (in-process, bounded) + S3 permanent storage | Fast repeated fetches; S3 as source of truth |
+| Profiling | `@platformatic/flame` | Continuous flame graph to catch PDF CPU spikes before they hit prod |
+| HTTP client | `undici` | Already in deps; fastest Node.js HTTP client; used for all external API calls (Razorpay, Resend, etc.) — replaces any `axios` or raw `fetch` |
+| Concurrent dedup | `async-cache-dedupe` | Prevents N parallel PDF-for-same-payment jobs; deduplicates in-flight promises |
+
+### Architecture
+
+```
+POST /api/v1/payments/:id/receipt
+        │
+        ▼
+effectHandler → PaymentService.requestReceipt(paymentId)
+        │
+        ├─ Check LRU cache (paymentId → S3 URL)   ← hit: return immediately
+        │
+        ├─ Check S3 for existing PDF              ← hit: cache + return URL
+        │
+        └─ Enqueue job via @platformatic/job-queue ← miss: async generation
+                │
+                ▼
+        [Worker Process: pdf-worker]
+                │
+        async-cache-dedupe deduplicates concurrent
+        jobs for the same paymentId
+                │
+        Fetch payment data via undici (internal API)
+                │
+        Render PDF (@react-pdf/renderer)
+                │
+        Upload to S3 (presigned URL, 7-year retention)
+                │
+        Update PostgreSQL receipt record
+                │
+        Publish RabbitMQ event → WebSocket push to client
+```
+
+### LRU Cache Strategy (Global — applies to all phases)
+
+`lru-cache` v11 is already in `dependencies`. Use it everywhere bounded in-process caching is needed. **Never use unbounded Maps/objects as caches** — they are memory leaks.
+
+```typescript
+// src/infra/cache/lruCaches.ts
+import { LRUCache } from 'lru-cache'
+
+// ─── OpenFGA permission results ───────────────────────────────────────────────
+// Key: `${userId}:${relation}:${objectType}:${objectId}`
+// Avoids a round-trip to OpenFGA on every request for the same check
+export const fgaPermissionCache = new LRUCache<string, boolean>({
+  max: 10_000,          // bounded: ~10k active permission pairs
+  ttl: 30_000,          // 30s — short enough to respect role changes
+  allowStale: false,
+})
+
+// ─── PASETO decoded token claims ──────────────────────────────────────────────
+// Key: token hash (sha256 hex, first 32 chars)
+// Avoids re-parsing + re-verifying signature on every request
+export const tokenClaimsCache = new LRUCache<string, TokenClaims>({
+  max: 5_000,
+  ttl: 5 * 60 * 1000,   // 5 min — must be ≤ token TTL
+  allowStale: false,
+})
+
+// ─── PDF receipt S3 URLs ──────────────────────────────────────────────────────
+// Key: paymentId   Value: presigned S3 URL
+// sizeCalculation prevents URL strings from blowing up memory
+export const receiptUrlCache = new LRUCache<string, string>({
+  max: 1_000,
+  maxSize: 500_000,     // 500KB total for URL strings
+  sizeCalculation: (v) => v.length,
+  ttl: 60 * 60 * 1000, // 1hr — presigned URLs expire after 1hr anyway
+})
+
+// ─── User profile (hot path) ──────────────────────────────────────────────────
+// Key: userId   Value: User document (stripped of sensitive fields)
+export const userProfileCache = new LRUCache<string, SafeUser>({
+  max: 2_000,
+  ttl: 2 * 60 * 1000,   // 2 min — fast invalidation on profile update
+})
+
+// ─── Health check aggregation ─────────────────────────────────────────────────
+// Deduplicates rapid /health polls from load balancers (avoid thundering herd)
+export const healthResultCache = new LRUCache<'result', HealthResult>({
+  max: 1,
+  ttl: 5_000,           // 5s TTL
+})
+
+// ─── Leaderboard top-N snapshot ───────────────────────────────────────────────
+// Bounded snapshot used by the debounced delta broadcaster
+export const leaderboardSnapshotCache = new LRUCache<string, LeaderboardEntry[]>({
+  max: 50,              // up to 50 concurrent leaderboard IDs
+  ttl: 2_000,           // 2s — delta broadcast window
+})
+```
+
+**Rule:** Every LRU cache must have an explicit `max` and `ttl`. No exceptions. `allowStale: false` unless you consciously accept serving stale data.
+
+### Code Pattern — for...of, includes, Set
+
+Replace all indexed loops, `indexOf !== -1`, and `filter`-based deduplication with idiomatic patterns:
+
+```typescript
+// ❌ WRONG: indexed loop
+for (let i = 0; i < payments.length; i++) {
+  process(payments[i])
+}
+
+// ✅ CORRECT: for...of
+for (const payment of payments) {
+  process(payment)
+}
+
+// ❌ WRONG: indexOf check
+if (ALLOWED_STATUSES.indexOf(status) !== -1) { }
+
+// ✅ CORRECT: includes (reads as English)
+if (ALLOWED_STATUSES.includes(status)) { }
+
+// ❌ WRONG: filter-based deduplication (O(n²))
+const unique = arr.filter((v, i, a) => a.indexOf(v) === i)
+
+// ✅ CORRECT: Set deduplication (O(n))
+const unique = [...new Set(arr)]
+
+// ❌ WRONG: repeated includes on large arrays (O(n) each time)
+const allowedIds = ['id1', 'id2', /* ... 1000 more */]
+if (allowedIds.includes(userId)) { }
+
+// ✅ CORRECT: Set for O(1) membership testing
+const allowedIdSet = new Set(allowedIds)
+if (allowedIdSet.has(userId)) { }
+
+// ❌ WRONG: building lookup map with find()
+const user = users.find(u => u.id === targetId)  // O(n) every call
+
+// ✅ CORRECT: Map for repeated lookups
+const userMap = new Map(users.map(u => [u.id, u]))
+const user = userMap.get(targetId)  // O(1)
+```
+
+Apply these patterns consistently across: CDC handlers, leaderboard ranking, permission checks, billing calculations, and all collection processing in Effect workflows.
+
+### Tasks
+
+- [ ] **6.2.0** Install `@react-pdf/renderer` (or `pdfmake`); add to deps
+- [ ] **6.2.1** Create `src/infra/cache/lruCaches.ts` with all 6 bounded caches above
+- [ ] **6.2.2** Create `src/infra/pdf/pdfService.ts` — Effect service wrapping PDF renderer
+  - `PdfService.generatePaymentReceipt(payment, invoice, billingProfile): Effect<Buffer>`
+  - Use `for...of` for line item iteration; `Set` for tax code deduplication
+- [ ] **6.2.3** Create `src/workers/pdfWorker.ts` — standalone `@platformatic/job-queue` worker
+  - Separate process entry point; own `ManagedRuntime` with `PdfService + S3Service + PostgresService`
+  - Wrap job handler in `async-cache-dedupe` keyed on `paymentId`
+  - Upload completed PDF to S3; update `receipts` table; publish `receipt.ready` RabbitMQ event
+- [ ] **6.2.4** Create `src/features/payments/receiptRoutes.ts`
+  - `POST /api/v1/payments/:id/receipt/request` — enqueue job, return `202 Accepted`
+  - `GET  /api/v1/payments/:id/receipt` — check cache → S3 URL or `404`
+  - Uses `receiptUrlCache` LRU before hitting PostgreSQL
+- [ ] **6.2.5** Integrate `@platformatic/flame` in `src/main.ts`
+  - Wrap server startup with flame profiler (dev + staging only; gated by `FLAME_ENABLED=true`)
+  - Output to `flame-out/` directory; gitignored
+- [ ] **6.2.6** Replace all `axios` / raw `fetch` calls for **external APIs** with `undici`
+  - Razorpay webhook verification: `undici.request()`
+  - Resend email delivery: `undici.request()`
+  - Any third-party call in `src/infra/` or `src/workers/`: use `undici`
+  - Wrap each in `async-cache-dedupe` where idempotent (e.g. payment status checks)
+- [ ] **6.2.7** Tests — TDD first:
+  - Unit: `PdfService.generatePaymentReceipt` renders correct line items, tax, totals
+  - Integration: job enqueue → worker → S3 upload → DB update
+  - Integration: `GET /receipt` returns 404 before job, presigned URL after
+
+---
+
+## Phase 6.3: OpenFGA with Own PostgreSQL
+
+### Decision #51: Self-Hosted OpenFGA Backed by Own Neon PostgreSQL
+
+OpenFGA supports PostgreSQL as its datastore backend. Instead of running a separate managed OpenFGA cloud service or an in-memory store, use the **same Neon PostgreSQL cluster** with a dedicated `openfga` schema.
+
+**Why:**
+- No extra managed service cost
+- Single backup strategy (Neon already has PITR)
+- OpenFGA's PG store is production-tested; Neon is serverless PG
+- Full control over schema migrations
+
+**Configuration:**
+
+```bash
+# Self-hosted OpenFGA server (Docker / Kubernetes sidecar)
+OPENFGA_DATASTORE_ENGINE=postgres
+OPENFGA_DATASTORE_URI=postgresql://user:pass@host/scaleforge_db?search_path=openfga&sslmode=require
+
+# OpenFGA server binds on internal port only (not exposed publicly)
+OPENFGA_HTTP_ADDR=0.0.0.0:8080
+OPENFGA_GRPC_ADDR=0.0.0.0:8081
+OPENFGA_PLAYGROUND_ENABLED=false   # prod: off
+OPENFGA_LOG_FORMAT=json
+```
+
+**Schema bootstrap** (run once, managed by Drizzle migration or raw SQL):
+
+```sql
+-- Run before starting OpenFGA server
+CREATE SCHEMA IF NOT EXISTS openfga;
+-- OpenFGA auto-migrates its own tables within the schema on first start
+-- with OPENFGA_DATASTORE_ENGINE=postgres
+```
+
+**Effect Service:**
+
+```typescript
+// src/infra/openfga/openFgaService.ts
+import { Context, Effect, Layer } from 'effect'
+import { OpenFgaClient } from '@openfga/sdk'
+import { fgaPermissionCache } from '../cache/lruCaches.ts'
+
+export class OpenFgaService extends Context.Service<OpenFgaService>()('OpenFgaService', {
+  effect: Effect.gen(function* () {
+    const config = yield* ConfigService
+    const client = new OpenFgaClient({
+      apiUrl: config.OPENFGA_API_URL,      // internal URL: http://localhost:8080
+      storeId: config.OPENFGA_STORE_ID,
+    })
+
+    const check = (userId: string, relation: string, object: string) =>
+      Effect.gen(function* () {
+        const cacheKey = `${userId}:${relation}:${object}`
+        const cached = fgaPermissionCache.get(cacheKey)
+        if (cached !== undefined) return cached
+
+        const result = yield* Effect.tryPromise(() =>
+          client.check({ user: `user:${userId}`, relation, object })
+        )
+        const allowed = result.allowed ?? false
+        fgaPermissionCache.set(cacheKey, allowed)
+        return allowed
+      })
+
+    const write = (tuples: TupleKey[]) =>
+      Effect.tryPromise(() => client.write({ writes: { tuple_keys: tuples } }))
+
+    const delete_ = (tuples: TupleKey[]) =>
+      Effect.tryPromise(() => client.write({ deletes: { tuple_keys: tuples } }))
+
+    return { check, write, delete: delete_ }
+  }),
+}) {}
+```
+
+**Key rule:** All FGA permission checks go through `OpenFgaService.check` — never call the `@openfga/sdk` client directly from feature code. The LRU cache (`fgaPermissionCache`) caps at 10k entries with 30s TTL, so role changes propagate within 30 seconds.
+
+### Tasks
+
+- [ ] **6.3.0** Add `@openfga/sdk` to deps if not present; verify version
+- [ ] **6.3.1** Add `OPENFGA_API_URL`, `OPENFGA_STORE_ID`, `OPENFGA_DATASTORE_URI` to ConfigService schema
+- [ ] **6.3.2** Add `openfga` schema to Neon PG; add migration step to `src/db/migrate.ts`
+- [ ] **6.3.3** Create `src/infra/openfga/openFgaService.ts` with `check`, `write`, `delete`
+- [ ] **6.3.4** Wire `OpenFgaService` into `appLayer.ts`
+- [ ] **6.3.5** Add `openfga` to Terraform module (self-hosted container, internal service only)
+- [ ] **6.3.6** Auth middleware: replace any JWT-only RBAC with OpenFGA `check` calls
+- [ ] **6.3.7** Tests: mock `OpenFgaService` in unit tests; integration test against real PG store in CI
+
+---
+
 ## Phase 7: Cleanup and Consolidation
 
 ### Task 7.1: Remove Express
@@ -2384,9 +3060,92 @@ git add -A && git commit -m "chore: final cleanup, all type errors resolved"
 
 ---
 
-## v2 Improvement Suggestions (from Graphify Analysis)
+## v2 Improvement Suggestions (from Graphify Analysis + Architecture Reviews)
 
-These 12 architectural improvements were identified from graph analysis of the v1 codebase (739 nodes, 1141 edges, 48 communities). None are automatically solved by Effect v4 -- they require deliberate architectural work during the relevant phase. Sorted by integration point.
+These improvements were identified from graph analysis of the v1 codebase (739 nodes, 1141 edges, 48 communities) plus architectural reviews in sessions 2-4. Sorted by integration point.
+
+### Decision #50: Code Pattern Standards (for...of, includes, Set, Map)
+
+Applied globally across all phases. See Phase 6.2 for full examples. Summary:
+- **for...of** everywhere instead of indexed `for` loops
+- **`Array.includes()`** instead of `arr.indexOf(x) !== -1`
+- **`Set`** for deduplication (O(n)) and membership testing on large collections (O(1) per test)
+- **`Map`** for repeated key lookups on collections instead of repeated `find()`
+- **`lru-cache`** (already in deps) for any in-process caching — always with `max` + `ttl`; no unbounded Maps
+
+### Decision #51: OpenFGA Backed by Own PostgreSQL (Neon)
+
+See Phase 6.3. OpenFGA self-hosted, datastore = Neon PG `openfga` schema. No extra managed service.
+
+### Decision #52: undici as Canonical External HTTP Client
+
+Replace any `axios` imports and raw `fetch` calls for **external** (third-party) API calls with `undici.request()`:
+- Already in `dependencies` at `^7.22.0`
+- 2–3× faster than `node-fetch`; same API surface as native `fetch`
+- Supports connection pooling (`undici.Pool`) for Razorpay, Resend, OpenFGA HTTP
+- Pair with `async-cache-dedupe` for idempotent read calls
+
+```typescript
+// src/infra/http/httpClient.ts
+import { Pool } from 'undici'
+import { createCache } from 'async-cache-dedupe'
+
+// Pooled connections per external host
+export const razorpayPool = new Pool('https://api.razorpay.com', { connections: 10 })
+export const resendPool   = new Pool('https://api.resend.com',   { connections: 5  })
+
+// Deduplicates concurrent identical reads (e.g. payment status during webhook burst)
+export const cachedPaymentStatus = createCache({
+  ttl: 2,          // 2 seconds
+  stale: 1,
+  storage: { type: 'memory', options: { size: 500 } },
+})
+cachedPaymentStatus.define('razorpay', async (paymentId: string) => {
+  const { body } = await razorpayPool.request({
+    path: `/v1/payments/${paymentId}`,
+    method: 'GET',
+    headers: { Authorization: `Basic ${RAZORPAY_B64_KEY}` },
+  })
+  return body.json()
+})
+```
+
+### Decision #53: @platformatic/flame for Continuous Profiling
+
+`@platformatic/flame` (in deps) wraps `0x` to generate V8 CPU flame graphs. Use in dev + staging to catch hot paths before prod:
+
+```typescript
+// src/main.ts (dev/staging only)
+if (process.env.FLAME_ENABLED === 'true') {
+  const { start } = await import('@platformatic/flame')
+  await start({ outputDir: 'flame-out', title: 'ScaleForge-v2' })
+}
+```
+
+Add `flame-out/` to `.gitignore`. Gate behind `FLAME_ENABLED=true` env var — never run in prod.
+
+### Decision #54: @platformatic/job-queue for Background Jobs
+
+`@platformatic/job-queue` (in deps) provides a PostgreSQL-backed persistent job queue — same DB, no extra infra:
+
+```typescript
+// src/workers/jobQueue.ts
+import { buildWorker, buildServer } from '@platformatic/job-queue'
+
+export const receiptJobWorker = await buildWorker({
+  connectionString: process.env.POSTGRES_DATABASE_URL!,
+  schema: 'jobs',
+  queues: ['pdf-receipts', 'email-delivery', 'subscription-renewal'],
+})
+```
+
+Job types:
+| Queue | Trigger | Handler |
+|---|---|---|
+| `pdf-receipts` | Payment completed | `pdfWorker.ts` — render + S3 upload |
+| `email-delivery` | Any notification event | `emailWorker.ts` — Resend via `undici` |
+| `subscription-renewal` | Cron: daily 00:00 | `renewalWorker.ts` — Razorpay charge |
+| `invoice-generation` | Subscription renewed | `invoiceWorker.ts` — Drizzle insert + PDF |
 
 ### Phase 2 (Infrastructure) Improvements
 

@@ -1,0 +1,10 @@
+environment    = "prod"
+gcp_project_id = "your-gcp-project-prod"
+gcp_region     = "asia-south1"
+db_tier        = "db-n1-standard-4"
+db_disk_size   = 100
+db_username    = "sf2_prod"
+redis_memory_gb = 5
+app_image      = "asia-south1-docker.pkg.dev/your-gcp-project-prod/scaleforge/app:prod-latest"
+app_cpu        = "4"
+app_memory     = "2Gi"

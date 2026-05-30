@@ -1,0 +1,9 @@
+environment         = "staging"
+azure_location      = "Central India"
+db_sku              = "GP_Standard_D2s_v3"
+db_storage_mb       = 65536
+db_username         = "sf2_staging"
+redis_capacity      = 2
+app_image           = "sf2stagingregistry.azurecr.io/scaleforge-v2:staging-latest"
+app_cpu             = 1.0
+app_memory          = "2Gi"

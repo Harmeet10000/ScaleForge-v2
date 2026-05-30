@@ -1,0 +1,10 @@
+environment    = "dev"
+gcp_project_id = "your-gcp-project-dev"
+gcp_region     = "asia-south1"
+db_tier        = "db-f1-micro"
+db_disk_size   = 10
+db_username    = "sf2_dev"
+redis_memory_gb = 1
+app_image      = "asia-south1-docker.pkg.dev/your-gcp-project-dev/scaleforge/app:dev-latest"
+app_cpu        = "1"
+app_memory     = "512Mi"

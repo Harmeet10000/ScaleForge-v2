@@ -1,0 +1,9 @@
+environment         = "dev"
+azure_location      = "Central India"
+db_sku              = "B_Standard_B1ms"
+db_storage_mb       = 32768
+db_username         = "sf2_dev"
+redis_capacity      = 1
+app_image           = "sf2devregistry.azurecr.io/scaleforge-v2:dev-latest"
+app_cpu             = 0.5
+app_memory          = "1Gi"

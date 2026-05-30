@@ -91,3 +91,23 @@ node_modules
 .kiro/steering/byterover-rules.md
 .qoder/rules/byterover-rules.md
 .augment/rules/byterover-rules.md
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.lock.info
+.terraform.lock.hcl
+terraform/*/crash.log
+terraform/*/override.tf
+terraform/*/override.tf.json
+# Never commit real tfvars with secrets — only template/example values
+# terraform/**/*.tfvars  ← NOT ignored (contains non-secret defaults)
+# Use TF_VAR_* env vars for all sensitive values
+
+# Platformatic flame graphs
+flame-out/
+*.cpuprofile
+*.heapsnapshot
+
+# PDF generation temp
+pdf-tmp/

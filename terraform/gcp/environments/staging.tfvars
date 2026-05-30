@@ -1,0 +1,10 @@
+environment    = "staging"
+gcp_project_id = "your-gcp-project-staging"
+gcp_region     = "asia-south1"
+db_tier        = "db-n1-standard-1"
+db_disk_size   = 50
+db_username    = "sf2_staging"
+redis_memory_gb = 2
+app_image      = "asia-south1-docker.pkg.dev/your-gcp-project-staging/scaleforge/app:staging-latest"
+app_cpu        = "2"
+app_memory     = "1Gi"
