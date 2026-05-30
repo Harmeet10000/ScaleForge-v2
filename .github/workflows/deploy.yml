@@ -1,0 +1,106 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false   # never cancel a deploy mid-flight
+
+jobs:
+  build-and-push:
+    name: Build & Push Image
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/scaleforge:$IMAGE_TAG \
+                       -t $ECR_REGISTRY/scaleforge:latest .
+          docker push $ECR_REGISTRY/scaleforge:$IMAGE_TAG
+          docker push $ECR_REGISTRY/scaleforge:latest
+
+  migrate:
+    name: Run DB Migrations
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+      - name: Run Drizzle migrations
+        run: bunx drizzle-kit migrate
+        env:
+          POSTGRES_DATABASE_URL: ${{ secrets.PROD_POSTGRES_URL }}
+
+  deploy-aws:
+    name: Terraform Apply (AWS)
+    needs: migrate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/aws
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve -var="image_tag=${{ github.sha }}"
+        env:
+          TF_VAR_db_password:         ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_redis_password:       ${{ secrets.TF_VAR_REDIS_PASSWORD }}
+          TF_VAR_rabbitmq_password:    ${{ secrets.TF_VAR_RABBITMQ_PASSWORD }}
+          TF_VAR_access_token_secret:  ${{ secrets.TF_VAR_ACCESS_TOKEN_SECRET }}
+          TF_VAR_refresh_token_secret: ${{ secrets.TF_VAR_REFRESH_TOKEN_SECRET }}
+          TF_VAR_resend_key:           ${{ secrets.TF_VAR_RESEND_KEY }}
+          TF_VAR_sentry_dsn:           ${{ secrets.TF_VAR_SENTRY_DSN }}
+
+  notify:
+    name: Notify
+    needs: deploy-aws
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Deployment status
+        run: |
+          if [ "${{ needs.deploy-aws.result }}" = "success" ]; then
+            echo "Deploy succeeded: ${{ github.sha }}"
+          else
+            echo "Deploy FAILED: ${{ github.sha }}" && exit 1
+          fi

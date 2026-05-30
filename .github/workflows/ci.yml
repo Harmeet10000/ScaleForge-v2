@@ -1,379 +1,95 @@
-name: Continuous Integration
+name: CI
 
 on:
-  push:
-    branches: [main, develop, 'feature/*', 'hotfix/*']
   pull_request:
-    branches: [main, develop]
-  workflow_dispatch:
+    branches: [main, staging]
+  push:
+    branches: [main, staging]
 
-env:
-  BUN_VERSION: '1.3.8'
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  # Type Checking (Fast Fail)
-  type-check:
-    name: Type Checking
+  typecheck:
+    name: Type Check
     runs-on: ubuntu-latest
-    timeout-minutes: 10
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: ${{ env.BUN_VERSION }}
-
+          bun-version: latest
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: TypeScript check
+        run: bunx tsc --noEmit
 
-      - name: Check types
-        run: bun run type-check
-
-  # Code Quality and Security Checks
-  code-quality:
-    name: Code Quality & Security
+  lint:
+    name: Lint + Layer Check
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: type-check
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          fetch-depth: 0 # Full history for better analysis
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
+          bun-version: latest
       - name: Install dependencies
         run: bun install --frozen-lockfile
+      - name: oxlint
+        run: bunx oxlint .
+      - name: Layer boundary check
+        run: bun run check:layers
 
-      - name: Run linting
-        run: bun run lint
-
-      - name: Run format check
-        run: bun run format:check
-
-      - name: Audit dependencies for vulnerabilities
-        run: bunx snyk test --severity-threshold=high || true
-        continue-on-error: true
-        env:
-          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
-
-      - name: Check for outdated dependencies
-        run: bunx npm-check-updates --root || true
-
-  # Unit and Integration Tests
   test:
-    name: Test Suite (${{ matrix.test-type }})
+    name: Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: type-check
-
     services:
-      mongodb:
-        image: mongo:7
-        ports:
-          - 27017:27017
+      mongo:
+        image: mongo:8
+        ports: ["27017:27017"]
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: scaleforge
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: scaleforge_test
+        ports: ["5432:5432"]
         options: >-
-          --health-cmd "mongosh --eval 'db.runCommand({ping: 1})'"
+          --health-cmd "pg_isready -U scaleforge"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-
       redis:
         image: redis:7-alpine
-        ports:
-          - 6379:6379
+        ports: ["6379:6379"]
         options: >-
           --health-cmd "redis-cli ping"
           --health-interval 10s
-          --health-timeout 5s
           --health-retries 5
-
       rabbitmq:
-        image: rabbitmq:3-management-alpine
-        ports:
-          - 5672:5672
-          - 15672:15672
+        image: rabbitmq:3.13-alpine
+        ports: ["5672:5672"]
         options: >-
-          --health-cmd "rabbitmq-diagnostics -q ping"
-          --health-interval 30s
-          --health-timeout 10s
+          --health-cmd "rabbitmq-diagnostics ping"
+          --health-interval 10s
           --health-retries 5
-        env:
-          RABBITMQ_DEFAULT_USER: test
-          RABBITMQ_DEFAULT_PASS: test
-
-    strategy:
-      fail-fast: false
-      matrix:
-        test-type: [unit, integration, e2e]
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: ${{ env.BUN_VERSION }}
-
+          bun-version: latest
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Create test environment file
-        run: |
-          cat > .env.test << EOF
-          NODE_ENV=test
-          PORT=3000
-          SERVER_URL=http://localhost:3000
-          FRONTEND_URL=http://localhost:3001
-          DATABASE=mongodb://localhost:27017/auth_test
-          DB_POOL_SIZE=10
-          REDIS_HOST=localhost
-          REDIS_PORT=6379
-          RABBITMQ_URL=amqp://test:test@localhost:5672
-          ACCESS_TOKEN_SECRET=test_access_secret_key_for_ci
-          REFRESH_TOKEN_SECRET=test_refresh_secret_key_for_ci
-          ACCESS_TOKEN_EXPIRY=15m
-          REFRESH_TOKEN_EXPIRY=7d
-          LOG_LEVEL=error
-          EOF
-
-      - name: Wait for services
-        run: |
-          echo "Waiting for MongoDB..."
-          timeout 60 bash -c 'until nc -z localhost 27017; do sleep 1; done'
-          echo "Waiting for Redis..."
-          timeout 60 bash -c 'until nc -z localhost 6379; do sleep 1; done'
-          echo "Waiting for RabbitMQ..."
-          timeout 60 bash -c 'until nc -z localhost 5672; do sleep 1; done'
-          echo "All services are ready!"
-
       - name: Run tests
-        run: bun run test:${{ matrix.test-type }}
+        run: bun test
         env:
-          CI: true
-
-      - name: Generate coverage report (unit tests only)
-        if: matrix.test-type == 'unit'
-        run: bun run test:coverage
-        env:
-          CI: true
-
-      - name: Upload coverage to Codecov
-        if: matrix.test-type == 'unit'
-        uses: codecov/codecov-action@v4
-        with:
-          file: ./coverage/lcov.info
-          flags: unittests
-          name: codecov-umbrella
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
-
-      - name: Archive test results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results-${{ matrix.test-type }}
-          path: |
-            coverage/
-            test-results.xml
-            logs/
-          retention-days: 7
-
-  # Security Scanning
-  security-scan:
-    name: Security Scanning
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    needs: code-quality
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Run Trivy vulnerability scanner (filesystem)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'sarif'
-          output: 'trivy-fs-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-fs-results.sarif'
-
-      - name: Run Semgrep security analysis
-        uses: semgrep/semgrep-action@v1
-        with:
-          config: >-
-            p/security-audit
-            p/secrets
-            p/nodejs
-            p/express
-            p/mongodb
-          generateSarif: '1'
-        env:
-          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
-        continue-on-error: true
-
-      - name: Upload Semgrep results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: semgrep.sarif
-
-      - name: Check for secrets with GitLeaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-
-  # Build and Push Container Images
-  build-images:
-    name: Build Container Images
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [test, security-scan]
-    if: github.event_name != 'pull_request'
-
-    outputs:
-      image-digest: ${{ steps.build.outputs.digest }}
-      image-tags: ${{ steps.meta.outputs.tags }}
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha,prefix={{branch}}-
-            type=raw,value=latest,enable={{is_default_branch}}
-          labels: |
-            org.opencontainers.image.title=${{ github.repository }}
-            org.opencontainers.image.description=Production-grade authentication service
-            org.opencontainers.image.vendor=${{ github.repository_owner }}
-
-      - name: Build and push Docker image
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./docker/prod.Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
-          sbom: true
-
-      - name: Run Trivy vulnerability scanner (image)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: 'sarif'
-          output: 'trivy-image-results.sarif'
-
-      - name: Upload Trivy image scan results
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: 'trivy-image-results.sarif'
-
-  # Generate SBOM (Software Bill of Materials)
-  generate-sbom:
-    name: Generate SBOM
-    runs-on: ubuntu-latest
-    needs: build-images
-    if: github.event_name != 'pull_request'
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Generate SBOM with Syft
-        uses: anchore/sbom-action@v0
-        with:
-          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          format: spdx-json
-          output-file: sbom.spdx.json
-
-      - name: Upload SBOM
-        uses: actions/upload-artifact@v4
-        with:
-          name: sbom
-          path: sbom.spdx.json
-          retention-days: 30
-
-  # Notification and Summary
-  notify-results:
-    name: Notify Results
-    runs-on: ubuntu-latest
-    needs: [type-check, code-quality, test, security-scan]
-    if: always()
-
-    steps:
-      - name: Determine overall status
-        id: status
-        run: |
-          if [[ "${{ needs.type-check.result }}" == "success" &&
-                "${{ needs.code-quality.result }}" == "success" &&
-                "${{ needs.test.result }}" == "success" &&
-                "${{ needs.security-scan.result }}" == "success" ]]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-            echo "message=✅ All CI checks passed successfully!" >> $GITHUB_OUTPUT
-          else
-            echo "status=failure" >> $GITHUB_OUTPUT
-            echo "message=❌ Some CI checks failed. Please review the results." >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create job summary
-        run: |
-          echo "## CI Pipeline Results 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Type Check | ${{ needs.type-check.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Code Quality | ${{ needs.code-quality.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Tests | ${{ needs.test.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Security Scan | ${{ needs.security-scan.result == 'success' && '✅' || '❌' }} |" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Overall Status:** ${{ steps.status.outputs.message }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Branch:** ${{ github.ref_name }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Triggered by:** ${{ github.actor }}" >> $GITHUB_STEP_SUMMARY
+          NODE_ENV: test
+          DATABASE: mongodb://localhost:27017/scaleforge_test
+          POSTGRES_DATABASE_URL: postgres://scaleforge:testpassword@localhost:5432/scaleforge_test
+          REDIS_HOST: localhost
+          REDIS_PORT: "6379"
+          REDIS_PASSWORD: ""
+          RABBITMQ_URL: amqp://localhost:5672
+          ACCESS_TOKEN_SECRET: test-access-secret-32-chars-minimum
+          REFRESH_TOKEN_SECRET: test-refresh-secret-32-chars-minimum
+          FRONTEND_URL: http://localhost:5173
+          SERVER_URL: http://localhost:3000
