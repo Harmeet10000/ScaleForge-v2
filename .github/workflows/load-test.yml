@@ -1,0 +1,39 @@
+name: Load Test
+
+on:
+  push:
+    tags: ["rc-*"]
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: "Scenario to run"
+        required: true
+        default: "baseline"
+        type: choice
+        options: [baseline, load, stress, spike]
+      base_url:
+        description: "Target URL"
+        required: true
+        default: "https://staging.scaleforge.dev"
+
+jobs:
+  load-test:
+    name: k6 ${{ inputs.scenario || 'baseline' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run k6
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/load/k6/scenarios/${{ inputs.scenario || 'baseline' }}.js
+          flags: --out json=results.json
+        env:
+          BASE_URL: ${{ inputs.base_url || 'https://staging.scaleforge.dev' }}
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: k6-results-${{ github.run_id }}
+          path: results.json
