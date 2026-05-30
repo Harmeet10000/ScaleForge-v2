@@ -1,136 +1,76 @@
-import express from 'express';
-import mongoSanitize from 'express-mongo-sanitize';
-import compression from 'compression';
-import hpp from 'hpp';
-import cors from 'cors';
-import cookieParser from 'cookie-parser';
-import timeout from 'express-timeout-handler';
-import swaggerUi from 'swagger-ui-express';
-import { swaggerSpec } from '../../docs/swagger';
-import { httpError } from './utils/httpError';
-import globalErrorHandler from './middlewares/globalErrorHandler';
-import {
-  correlationIdMiddleware,
-  corsOptions,
-  limiter,
-  metricsMiddleware,
-  overloadProtector,
-  securityHeaders
-} from './middlewares/serverMiddleware';
-import authRoutes from './features/auth/authRoutes';
-import healthRoutes from './features/health/healthRoutes';
-// import searchRoutes from './features/search/searchRoutes';
+/**
+ * src/app/app.ts  (Fastify — replaces Express version)
+ *
+ * Builds and returns a fully-configured Fastify instance.
+ * Does NOT call listen() — that is main.ts's responsibility.
+ */
 
-import s3Routes from './features/storage/s3Routes';
-import geminiRoutes from './features/gemini/geminiRoutes';
-import auditRoutes from './features/audit/auditRoutes';
-import { logger } from './utils/logger';
+import Fastify from "fastify"
+import cors from "@fastify/cors"
+import swagger from "@fastify/swagger"
+import swaggerUi from "@fastify/swagger-ui"
+import fastifyBridgePlugin from "../runtime/fastifyBridge.ts"
+import { securityPlugin } from "./plugins/security.ts"
+import { rateLimitPlugin } from "./plugins/rateLimiting.ts"
+import { metricsRoutes } from "./features/metrics/metricsRoutes.ts"
+import { adminFeatureFlagRoutes } from "./features/admin/featureFlagRoutes.ts"
+import { webhookRoutes } from "./features/webhooks/webhookRoutes.ts"
 
-const app = express();
-
-// 1) GLOBAL MIDDLEWARES
-// Set request timeout to 30 seconds
-app.use(
-  timeout.handler({
-    timeout: 30000,
-    onTimeout: (req, res, next) => {
-      logger.warn('Request timed out', {
-        meta: { correlationId: req.correlationId, url: req.originalUrl }
-      });
-      httpError(next, new Error('Request took too long to process'), req, 408);
-    }
+export const buildApp = async () => {
+  const fastify = Fastify({
+    logger: false,           // Pino is managed by the Effect layer
+    requestIdHeader: "x-correlation-id",
+    requestIdLogLabel: "correlationId",
+    trustProxy: true,
   })
-);
 
-// Corelational ID for request tracking
-app.use(correlationIdMiddleware);
+  // ── Core plugins ────────────────────────────────────────────────────────────
+  // 1. Effect runtime decorator (must be first — routes depend on it)
+  await fastify.register(fastifyBridgePlugin)
 
-// Set security HTTP headers and  Data sanitization against XSS
-app.use(securityHeaders);
+  // 2. Security: Helmet + CSRF
+  await fastify.register(securityPlugin)
 
-// Add overload protection as one of the first middlewares
-app.use(overloadProtector);
+  // 3. Rate limiting (Redis-backed global limits)
+  await fastify.register(rateLimitPlugin)
 
-// Add compression middleware
-app.use(
-  compression({
-    level: 6,
-    filter: (req, res) => {
-      if (req.headers['x-no-compression']) {
-        // Don't compress responses with this header
-        return false;
-      }
-      return compression.filter(req, res);
+  // 4. CORS
+  await fastify.register(cors, {
+    origin: process.env["FRONTEND_URL"] ?? "http://localhost:5173",
+    credentials: true,
+  })
+
+  // 5. OpenAPI / Swagger
+  await fastify.register(swagger, {
+    openapi: {
+      info: { title: "ScaleForge API", version: "1.0.0", description: "Production-grade API" },
+      servers: [{ url: "/api/v1" }],
+      components: { securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } } },
     },
-    threshold: 15 * 1000
   })
-);
-
-app.use('/api', limiter);
-
-// Body parser, reading data from body into req.body
-app.use(express.json({ limit: '64kb' }));
-
-// Middleware to handle URL-encoded data
-app.use(express.urlencoded({ extended: true }));
-
-// Parse cookies
-app.use(cookieParser());
-
-// Data sanitization against NoSQL query injection
-app.use(mongoSanitize());
-
-// Prevent parameter pollution
-app.use(
-  hpp({
-    whitelist: ['sort', 'fields', 'page', 'limit', 'filter', 'search', 'category', 'tags', 'status']
+  await fastify.register(swaggerUi, {
+    routePrefix: "/api-docs",
+    uiConfig: { docExpansion: "none", filter: true },
   })
-);
 
-app.use(cors(corsOptions));
+  // ── Routes ───────────────────────────────────────────────────────────────────
+  // Prometheus scrape (no /api/v1 prefix, no auth)
+  await fastify.register(metricsRoutes)
 
-// Apply Prometheus metrics middleware - must be before routes
-app.use(metricsMiddleware);
+  // Versioned API prefix
+  await fastify.register(async (api) => {
+    // Feature flag admin
+    await api.register(adminFeatureFlagRoutes)
+    // Outbound webhooks
+    await api.register(webhookRoutes)
+    // TODO (Phase 4): await api.register(healthRoutes)
+    // TODO (Phase 5): await api.register(authRoutes)
+  }, { prefix: "/api/v1" })
 
-// 3) ROUTES
-// Swagger setup
-app.use(
-  '/api-docs',
-  swaggerUi.serve,
-  swaggerUi.setup(swaggerSpec, {
-    explorer: true,
-    // customCss: '.swagger-ui .topbar { display: none }',
-    swaggerOptions: {
-      // docExpansion: 'none',
-      filter: true,
-      showRequestDuration: true
-    }
+  // 404 fallback
+  fastify.setNotFoundHandler((_req, reply) => {
+    void reply.status(404).send({ success: false, statusCode: 404, message: "Route not found", data: null })
   })
-);
 
-// Endpoint to serve the swagger.json file
-app.get('/swagger.json', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.send(swaggerSpec);
-});
-app.get('/', (req, res) => {
-  res.status(200).json({ message: 'Welcome to the Auth Service API 🚀.' });
-});
-
-app.use('/api/v1/auth', authRoutes);
-app.use('/api/v1/health', healthRoutes);
-// app.use('/api/v1/search', searchRoutes);
-
-app.use('/api/v1/audit', auditRoutes);
-
-app.use('/api/v1/upload', s3Routes);
-app.use('/api/v1/gemini', geminiRoutes);
-
-// 4) CATCHES ALL ROUTES THAT ARE NOT DEFINED
-app.all('*', (req, res, next) => {
-  httpError(next, new Error(`Can't find ${req.originalUrl} on this server!`), req, 404);
-});
-
-app.use(globalErrorHandler);
-
-export default app;
+  return fastify
+}
