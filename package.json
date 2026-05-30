@@ -208,6 +208,7 @@
     "varlock": "^0.9.1",
     "wattpm": "^3.48.0",
     "which": "^6.0.1",
+    "winston-mongodb": "^7.0.1",
     "ws": "^8.20.0",
     "xstate": "^5.32.0",
     "xxhashjs": "0.2.2",
