@@ -68,6 +68,12 @@ Real microservice maturity starts when:
 
 You stop thinking in services and start thinking in failure domains
 55. add CDC, knock, websockets, VS Code thingies
+56. add github:JRedeker/opencode-morph-fast-apply
+@morphllm/opencode-morph-plugin
+oh-my-opencode
+opencode-skillful deprecated?
+darrenhinde/OpenAgentsControl /oac:setup --core
+
 
 ```
 // logger.ts

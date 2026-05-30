@@ -1,0 +1,8 @@
+{
+  "debug": true,
+  "basePaths": ["~/.config/opencode/skills", ".opencode/skills", "./vendor/skills"],
+  "promptRenderer": "xml",
+  "modelRenderers": {
+    "gpt-4": "json"
+  }
+}
