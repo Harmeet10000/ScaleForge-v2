@@ -27,3 +27,7 @@ export class ExternalServiceError extends Data.TaggedError("ExternalServiceError
   readonly service: string
   readonly cause: unknown
 }> {}
+
+export class TooManyRequestsError extends Data.TaggedError("TooManyRequestsError")<{
+  readonly retryAfter?: string
+}> {}

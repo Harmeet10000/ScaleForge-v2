@@ -6,6 +6,7 @@ import type {
   ForbiddenError,
   ConflictError,
   ExternalServiceError,
+  TooManyRequestsError,
 } from "./commonErrors.ts"
 import type {
   UserNotFoundError,
@@ -54,6 +55,7 @@ export type AppError =
   | InvalidTokenError
   | InvalidOAuthCredentialsError
   | HealthCheckError
+  | TooManyRequestsError
 
 const httpError = (statusCode: number, message: string): HttpErrorResponse => ({
   success: false,
@@ -112,6 +114,9 @@ export const toHttpError = (error: AppError): HttpErrorResponse =>
     // Infra errors surfaced to HTTP
     Match.tag("HealthCheckError", (e) =>
       httpError(503, `Health check failed: ${e.component}`)
+    ),
+    Match.tag("TooManyRequestsError", (e) =>
+      httpError(429, e.retryAfter != null ? `Rate limit exceeded. Retry after ${e.retryAfter}` : "Rate limit exceeded")
     ),
     Match.exhaustive
   )
