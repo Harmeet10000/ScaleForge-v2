@@ -1,18 +1,20 @@
 import { Schema } from "effect"
 
 // Standard API response envelope
-export class ApiResponse extends Schema.Class<ApiResponse>("ApiResponse")({
+export const ApiResponse = Schema.Struct({
   success: Schema.Boolean,
   statusCode: Schema.Number,
   message: Schema.String,
   data: Schema.Unknown,
-}) {}
+})
+export type ApiResponse = Schema.Schema.Type<typeof ApiResponse>
 
 // Pagination query params
-export class PaginationParams extends Schema.Class<PaginationParams>("PaginationParams")({
+export const PaginationParams = Schema.Struct({
   page: Schema.optionalWith(Schema.NumberFromString, { default: () => 1 }),
   limit: Schema.optionalWith(Schema.NumberFromString, { default: () => 20 }),
-}) {}
+})
+export type PaginationParams = Schema.Schema.Type<typeof PaginationParams>
 
 // Common field schemas
 export const EmailSchema = Schema.String.pipe(
