@@ -3214,3 +3214,1408 @@ Items to verify when Effect v4 reaches stable release (beta APIs may shift):
 - [ ] Verify `Effect.acquireRelease` signature unchanged
 - [ ] Test `Logger.replace(Logger.defaultLogger, ...)` for Pino integration
 - [ ] Confirm ecosystem packages use single version number (install `effect@4.x` only)
+
+---
+
+## Gap Analysis: Phases 8–19
+
+> Added 2026-05-30. These phases cover cross-cutting concerns that were unplanned in the original Phase 0–7 scope. All are required for a production-ready system.
+>
+> **Decision #55 — No class syntax for services/schemas.** `Context.GenericTag<Interface>` + `Layer.effect`/`Layer.scoped` replaces `Context.Service` class. `Schema.Struct` replaces `Schema.Class`. `Data.TaggedError` class syntax is kept (baked into Effect error API).
+
+---
+
+## Phase 8: Observability
+
+### Context
+
+`@fastify/otel`, `prom-client`, and `@platformatic/fastify-http-metrics` are already installed but have zero plan coverage. `express-prom-bundle` will be removed with Express. Sentry is not yet installed.
+
+**Dependencies to add:**
+
+```bash
+bun add @sentry/node @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node
+```
+
+### Task 8.1: Pino Logger as Effect Layer
+
+**Files:**
+- Create: `src/infra/logger/pinoLogger.ts`
+
+```typescript
+// src/infra/logger/pinoLogger.ts
+import { Logger } from "effect"
+import pino from "pino"
+
+const pinoInstance = pino({
+  level: process.env["LOG_LEVEL"] ?? "info",
+  transport:
+    process.env["NODE_ENV"] === "development"
+      ? { target: "pino-pretty", options: { colorize: true } }
+      : undefined,
+})
+
+// Replace Effect's default logger with Pino. Features use Effect.log*,
+// never import Pino directly — this is the only place Pino is wired.
+export const PinoLoggerLayer = Logger.replace(
+  Logger.defaultLogger,
+  Logger.make(({ logLevel, message, annotations }) => {
+    const level = logLevel.label.toLowerCase()
+    const msg = Array.isArray(message) ? message.join(" ") : String(message)
+    pinoInstance[level as "info" | "warn" | "error" | "debug" | "trace"]?.(
+      Object.fromEntries(annotations),
+      msg
+    )
+  })
+)
+```
+
+- [ ] **Step 1:** Create `src/infra/logger/pinoLogger.ts`
+- [ ] **Step 2:** Wire `PinoLoggerLayer` into `AppLayer` in `src/runtime/appLayer.ts`
+- [ ] **Step 3:** Delete `src/app/utils/logger.ts` (Task 7.3 absorbs this)
+- [ ] **Step 4:** Commit: `feat: add Pino as Effect logger layer`
+
+### Task 8.2: OpenTelemetry Tracing
+
+**Files:**
+- Create: `src/infra/telemetry/tracingService.ts`
+
+```typescript
+// src/infra/telemetry/tracingService.ts
+import { Context, Effect, Layer } from "effect"
+import { NodeSDK } from "@opentelemetry/sdk-node"
+import { getNodeAutoInstrumentations } from "@opentelemetry/auto-instrumentations-node"
+import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http"
+import { AppConfig } from "../../core/config/configService.ts"
+
+export interface TracingService {
+  readonly sdk: NodeSDK
+}
+
+export const TracingService = Context.GenericTag<TracingService>("@infra/TracingService")
+
+const make = Effect.gen(function* () {
+  const config = yield* AppConfig
+  const sdk = new NodeSDK({
+    serviceName: `scaleforge-${config.nodeEnv}`,
+    traceExporter: new OTLPTraceExporter(),
+    instrumentations: [getNodeAutoInstrumentations()],
+  })
+
+  yield* Effect.acquireRelease(
+    Effect.sync(() => sdk.start()),
+    () => Effect.promise(() => sdk.shutdown())
+  )
+
+  return TracingService.of({ sdk })
+})
+
+export const TracingServiceLive = Layer.scoped(TracingService, make)
+```
+
+**Usage pattern — add spans to service methods:**
+
+```typescript
+// In any Effect workflow:
+yield* Effect.withSpan("AuthService.loginUser", { attributes: { userId } })(
+  Effect.gen(function* () {
+    // ... business logic
+  })
+)
+```
+
+- [ ] **Step 1:** Install `@opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-http`
+- [ ] **Step 2:** Create `src/infra/telemetry/tracingService.ts`
+- [ ] **Step 3:** Add `Effect.withSpan` to all infra service methods (Mongo queries, Redis commands, RabbitMQ publishes)
+- [ ] **Step 4:** Register `@fastify/otel` Fastify plugin (already installed) alongside `TracingServiceLive`
+- [ ] **Step 5:** Commit: `feat: add OpenTelemetry tracing with Effect spans`
+
+### Task 8.3: Prometheus Metrics
+
+**Files:**
+- Create: `src/infra/telemetry/metricsService.ts`
+- Create: `src/app/features/metrics/metricsRoutes.ts`
+
+```typescript
+// src/infra/telemetry/metricsService.ts
+import { Context, Effect, Layer } from "effect"
+import { Registry, collectDefaultMetrics, Counter, Histogram } from "prom-client"
+
+export interface MetricsService {
+  readonly registry: Registry
+  readonly httpRequestDuration: Histogram
+  readonly dbQueryDuration: Histogram
+  readonly queueDepth: Counter
+}
+
+export const MetricsService = Context.GenericTag<MetricsService>("@infra/MetricsService")
+
+const make = Effect.sync(() => {
+  const registry = new Registry()
+  collectDefaultMetrics({ register: registry })
+
+  const httpRequestDuration = new Histogram({
+    name: "http_request_duration_seconds",
+    help: "HTTP request duration in seconds",
+    labelNames: ["method", "route", "status_code"],
+    buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
+    registers: [registry],
+  })
+
+  const dbQueryDuration = new Histogram({
+    name: "db_query_duration_seconds",
+    help: "Database query duration in seconds",
+    labelNames: ["db", "operation"],
+    buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1],
+    registers: [registry],
+  })
+
+  const queueDepth = new Counter({
+    name: "rabbitmq_messages_published_total",
+    help: "Total RabbitMQ messages published",
+    labelNames: ["exchange", "routing_key"],
+    registers: [registry],
+  })
+
+  return MetricsService.of({ registry, httpRequestDuration, dbQueryDuration, queueDepth })
+})
+
+export const MetricsServiceLive = Layer.effect(MetricsService, make)
+```
+
+```typescript
+// src/app/features/metrics/metricsRoutes.ts
+// GET /metrics — Prometheus scrape endpoint (internal, not behind auth)
+import type { FastifyInstance } from "fastify"
+import { MetricsService } from "../../../infra/telemetry/metricsService.ts"
+
+export const metricsRoutes = async (fastify: FastifyInstance) => {
+  fastify.get("/metrics", { config: { rateLimit: false } }, async (_, reply) => {
+    const { registry } = fastify.effectRuntime.runSync(
+      MetricsService.pipe(/* yield registry */)
+    )
+    const metrics = await registry.metrics()
+    return reply.type(registry.contentType).send(metrics)
+  })
+}
+```
+
+- [ ] **Step 1:** Create `src/infra/telemetry/metricsService.ts`
+- [ ] **Step 2:** Create `src/app/features/metrics/metricsRoutes.ts`
+- [ ] **Step 3:** Add `@platformatic/fastify-http-metrics` plugin registration (replaces `express-prom-bundle`)
+- [ ] **Step 4:** Remove `express-prom-bundle` after Express removal
+- [ ] **Step 5:** Commit: `feat: add Prometheus metrics service and /metrics endpoint`
+
+### Task 8.4: Sentry Error Tracking
+
+**Files:**
+- Create: `src/infra/telemetry/sentryService.ts`
+
+```typescript
+// src/infra/telemetry/sentryService.ts
+import * as Sentry from "@sentry/node"
+import { Context, Effect, Layer } from "effect"
+import { AppConfig } from "../../core/config/configService.ts"
+
+// Add SENTRY_DSN to AppConfig (Task: extend configService.ts)
+export interface SentryService {
+  readonly captureException: (error: unknown) => void
+}
+
+export const SentryService = Context.GenericTag<SentryService>("@infra/SentryService")
+
+const make = Effect.gen(function* () {
+  const config = yield* AppConfig
+
+  if (config.isProduction) {
+    Sentry.init({
+      dsn: process.env["SENTRY_DSN"],
+      environment: config.nodeEnv,
+      tracesSampleRate: 0.1,
+      release: process.env["GIT_SHA"],
+    })
+  }
+
+  return SentryService.of({
+    captureException: (error) => {
+      if (config.isProduction) Sentry.captureException(error)
+    },
+  })
+})
+
+export const SentryServiceLive = Layer.effect(SentryService, make)
+```
+
+**Wire into `effectHandler`:** on unhandled errors, call `SentryService.captureException` before returning 500.
+
+- [ ] **Step 1:** `bun add @sentry/node`
+- [ ] **Step 2:** Add `SENTRY_DSN`, `GIT_SHA` to `AppConfig`
+- [ ] **Step 3:** Create `src/infra/telemetry/sentryService.ts`
+- [ ] **Step 4:** Wire into `effectHandler` for unhandled errors
+- [ ] **Step 5:** Commit: `feat: add Sentry error tracking`
+
+### Phase 8 Decisions
+
+| # | Decision | Value |
+|---|---|---|
+| 56 | **Tracing exporter** | OTLP HTTP → Jaeger (dev), Tempo/Grafana Cloud (prod) |
+| 57 | **Metrics scrape** | Prometheus → Grafana (Datadog in Terraform already wired) |
+| 58 | **Logger** | Pino as Effect layer only; no Winston, no direct console.log in features |
+| 59 | **Sentry env gate** | Production only; dev/staging use local logs + Jaeger UI |
+
+---
+
+## Phase 9: CI/CD Pipeline
+
+### Context
+
+No deployment pipeline exists. GitHub Actions workflows cover typecheck + tests on PR, and build → push → deploy on merge. Terraform is in `terraform/` but no automation invokes it.
+
+### Task 9.1: CI Workflow (PR checks)
+
+**File:** `.github/workflows/ci.yml`
+
+```yaml
+name: CI
+
+on:
+  pull_request:
+    branches: [main, staging]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with: { bun-version: latest }
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx oxlint .
+      - run: bun run check:layers
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:8
+        ports: ["27017:27017"]
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: test, POSTGRES_DB: scaleforge_test }
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+      rabbitmq:
+        image: rabbitmq:3.13-management
+        ports: ["5672:5672"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun test
+        env:
+          DATABASE: mongodb://localhost:27017/scaleforge_test
+          POSTGRES_DATABASE_URL: postgres://postgres:test@localhost:5432/scaleforge_test
+          REDIS_HOST: localhost
+          REDIS_PORT: "6379"
+          REDIS_PASSWORD: ""
+          NODE_ENV: test
+```
+
+- [ ] **Step 1:** Create `.github/workflows/ci.yml`
+- [ ] **Step 2:** Commit: `ci: add PR typecheck, lint, and test workflow`
+
+### Task 9.2: Deploy Workflow (merge to main)
+
+**Files:**
+- `.github/workflows/deploy.yml`
+- `Dockerfile`
+
+```dockerfile
+# Dockerfile — multi-stage Bun build
+FROM oven/bun:1 AS base
+WORKDIR /app
+COPY package.json bun.lockb* ./
+RUN bun install --frozen-lockfile --production
+
+FROM base AS build
+COPY . .
+RUN bun build src/app/index.ts --target bun --outfile dist/server.js
+
+FROM oven/bun:1-slim AS runtime
+WORKDIR /app
+COPY --from=build /app/dist ./dist
+COPY --from=base /app/node_modules ./node_modules
+EXPOSE 3000
+ENV NODE_ENV=production
+CMD ["bun", "run", "dist/server.js"]
+```
+
+```yaml
+# .github/workflows/deploy.yml
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Build and push to ECR
+        env:
+          ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/scaleforge:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/scaleforge:$IMAGE_TAG
+
+  migrate:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bunx drizzle-kit migrate
+        env:
+          POSTGRES_DATABASE_URL: ${{ secrets.PROD_POSTGRES_URL }}
+
+  terraform:
+    needs: migrate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform/aws
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform init
+      - run: terraform apply -auto-approve -var="image_tag=${{ github.sha }}"
+        env:
+          TF_VAR_db_password: ${{ secrets.TF_VAR_DB_PASSWORD }}
+          TF_VAR_redis_password: ${{ secrets.TF_VAR_REDIS_PASSWORD }}
+          TF_VAR_rabbitmq_password: ${{ secrets.TF_VAR_RABBITMQ_PASSWORD }}
+```
+
+- [ ] **Step 1:** Create `Dockerfile`
+- [ ] **Step 2:** Create `.github/workflows/deploy.yml`
+- [ ] **Step 3:** Add `image_tag` variable to `terraform/aws/variables.tf` and `modules/workers/main.tf`
+- [ ] **Step 4:** Add GitHub repository secrets: `AWS_DEPLOY_ROLE_ARN`, `ECR_REGISTRY`, `PROD_POSTGRES_URL`, and all `TF_VAR_*` secrets
+- [ ] **Step 5:** Commit: `ci: add Dockerfile and deploy workflow`
+
+### Phase 9 Decisions
+
+| # | Decision | Value |
+|---|---|---|
+| 60 | **Image registry** | AWS ECR (primary); GCR and ACR use same SHA tag pushed in parallel |
+| 61 | **Deploy order** | build → migrate → terraform (migration always before new binary) |
+| 62 | **Rollback** | Terraform `image_tag` variable; rollback = re-run workflow with previous SHA |
+| 63 | **Multi-cloud deploy** | AWS deploys first; GCP/Azure are standby — separate workflow triggers on release tag |
+
+---
+
+## Phase 10: Local Dev Docker Compose
+
+### Context
+
+No local dev environment definition exists. Developers must run MongoDB, PostgreSQL, Redis, RabbitMQ, and OpenFGA manually. This phase adds a single `docker-compose.dev.yml` + `.env.example`.
+
+### Task 10.1: Docker Compose for Local Dev
+
+**File:** `docker-compose.dev.yml`
+
+```yaml
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:8
+    ports: ["27017:27017"]
+    volumes: ["mongo_data:/data/db"]
+    environment:
+      MONGO_INITDB_DATABASE: scaleforge_dev
+
+  postgres:
+    image: postgres:16-alpine
+    ports: ["5432:5432"]
+    volumes: ["pg_data:/var/lib/postgresql/data"]
+    environment:
+      POSTGRES_USER: scaleforge
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: scaleforge_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scaleforge"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: redis-server --requirepass devpassword
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"   # management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: scaleforge
+      RABBITMQ_DEFAULT_PASS: devpassword
+
+  openfga:
+    image: openfga/openfga:latest
+    ports: ["8080:8080"]
+    command: run --datastore-engine postgres --datastore-uri "postgres://scaleforge:devpassword@postgres:5432/scaleforge_dev?search_path=openfga"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  openfga-migrate:
+    image: openfga/openfga:latest
+    command: migrate --datastore-engine postgres --datastore-uri "postgres://scaleforge:devpassword@postgres:5432/scaleforge_dev?search_path=openfga"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  mongo_data:
+  pg_data:
+```
+
+**File:** `.env.example`
+
+```bash
+NODE_ENV=development
+PORT=3000
+HOSTNAME=0.0.0.0
+SERVER_ID=local-dev
+
+# MongoDB
+DATABASE=mongodb://localhost:27017/scaleforge_dev
+DB_POOL_SIZE=10
+
+# PostgreSQL
+POSTGRES_DATABASE_URL=postgres://scaleforge:devpassword@localhost:5432/scaleforge_dev
+
+# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_USERNAME=
+REDIS_PASSWORD=devpassword
+
+# Auth
+ACCESS_TOKEN_SECRET=dev-access-secret-min-32-chars-here
+REFRESH_TOKEN_SECRET=dev-refresh-secret-min-32-chars-here
+ACCESS_TOKEN_EXPIRY=15m
+REFRESH_TOKEN_EXPIRY=7d
+
+# RabbitMQ
+RABBITMQ_URL=amqp://scaleforge:devpassword@localhost:5672
+
+# URLs
+FRONTEND_URL=http://localhost:5173
+SERVER_URL=http://localhost:3000
+
+# S3 (use localstack or leave blank for dev)
+ACCESS_KEY=
+SECRET_ACCESS_KEY=
+BUCKET_NAME=scaleforge-dev
+BUCKET_REGION=us-east-1
+
+# Resend (use test key from resend.com)
+RESEND_KEY=re_test_xxxx
+
+# Optional for dev
+GEMINI_API_KEY=
+ELASTICSEARCH_HOST=
+ELASTICSEARCH_API_KEY=
+KAFKA_BROKER=
+NOVU_API_KEY=
+LOKI_HOST=
+SENTRY_DSN=
+FLAME_ENABLED=false
+```
+
+- [ ] **Step 1:** Create `docker-compose.dev.yml`
+- [ ] **Step 2:** Create `.env.example` (copy of `.env` with secrets blanked/replaced with dev values)
+- [ ] **Step 3:** Add `dev:infra` script to `package.json`: `"dev:infra": "docker compose -f docker-compose.dev.yml up -d"`
+- [ ] **Step 4:** Add `dev:infra:down` script: `"dev:infra:down": "docker compose -f docker-compose.dev.yml down"`
+- [ ] **Step 5:** Add `docker-compose.dev.yml` note to README
+- [ ] **Step 6:** Commit: `chore: add docker-compose.dev.yml and .env.example for local dev`
+
+---
+
+## Phase 11: Database Migration CI Gate
+
+### Context
+
+Drizzle Kit is installed (`drizzle-kit: 0.31.5`). Migrations are generated but the CI pipeline has no gate ensuring migrations run before new code deploys. A failed migration that races with a deploy causes downtime.
+
+### Task 11.1: Drizzle Migration Strategy
+
+**Rules:**
+1. All schema changes go through `bunx drizzle-kit generate` (dev only)
+2. Generated migration files are committed to `src/db/migrations/`
+3. CI runs `bunx drizzle-kit migrate` before the new image starts
+4. **Only additive changes** (add column, add table, add index) are allowed in the automated CI gate
+5. **Destructive changes** (drop column, rename column, change type) require a manual runbook step before the migration runs in CI
+
+**File:** `drizzle.config.ts`
+
+```typescript
+// drizzle.config.ts
+import { defineConfig } from "drizzle-kit"
+
+export default defineConfig({
+  schema: "./src/db/schema/*.ts",
+  out: "./src/db/migrations",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env["POSTGRES_DATABASE_URL"]!,
+  },
+  verbose: true,
+  strict: true,
+})
+```
+
+**`package.json` scripts:**
+
+```json
+{
+  "db:generate": "drizzle-kit generate",
+  "db:migrate": "drizzle-kit migrate",
+  "db:studio": "drizzle-kit studio",
+  "db:check": "drizzle-kit check"
+}
+```
+
+**Destructive change runbook template** (`docs/runbooks/destructive-migration.md`):
+
+```markdown
+## Destructive Migration Runbook
+
+1. Put app in maintenance mode (ECS desired count → 0)
+2. Take manual RDS snapshot
+3. Run: `bunx drizzle-kit migrate` against prod DB
+4. Verify: `bun run db:check`
+5. Restore desired count
+6. Monitor error rate for 10 minutes
+```
+
+- [ ] **Step 1:** Create `drizzle.config.ts`
+- [ ] **Step 2:** Add `db:generate`, `db:migrate`, `db:studio`, `db:check` scripts to `package.json`
+- [ ] **Step 3:** Run `bunx drizzle-kit generate` to create initial migration from existing schemas
+- [ ] **Step 4:** Commit generated migrations: `git add src/db/migrations && git commit -m "chore: initial Drizzle migration snapshot"`
+- [ ] **Step 5:** Create `docs/runbooks/destructive-migration.md`
+- [ ] **Step 6:** Confirm `migrate` step in `.github/workflows/deploy.yml` (Task 9.2) runs before `terraform apply`
+- [ ] **Step 7:** Commit: `chore: add drizzle.config.ts and migration CI gate`
+
+---
+
+## Phase 12: Security Hardening
+
+### Context
+
+`@fastify/csrf-protection`, `@fastify/helmet`, and `@fastify/rate-limit` are installed but not wired. `hpp` and `express-mongo-sanitize` are Express-only and will be removed. Webhook signature verification is missing.
+
+### Task 12.1: Fastify Security Plugin
+
+**File:** `src/app/plugins/security.ts`
+
+```typescript
+// src/app/plugins/security.ts
+import fp from "fastify-plugin"
+import type { FastifyInstance } from "fastify"
+import csrf from "@fastify/csrf-protection"
+import helmet from "@fastify/helmet"
+
+export const securityPlugin = fp(async (fastify: FastifyInstance) => {
+  // Helmet: sets X-Frame-Options, X-Content-Type-Options, HSTS, CSP, etc.
+  await fastify.register(helmet, {
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'"],
+        styleSrc: ["'self'", "'unsafe-inline'"],
+        imgSrc: ["'self'", "data:", "https:"],
+        connectSrc: ["'self'"],
+      },
+    },
+    crossOriginEmbedderPolicy: false, // allow Swagger UI
+  })
+
+  // CSRF — signed double-submit cookie pattern for SPA clients
+  await fastify.register(csrf, {
+    sessionPlugin: "@fastify/cookie",
+    cookieOpts: { signed: true, httpOnly: true, sameSite: "strict", secure: true },
+  })
+})
+```
+
+- [ ] **Step 1:** Create `src/app/plugins/security.ts`
+- [ ] **Step 2:** Register `securityPlugin` in `src/app/app.ts` (Fastify entry)
+- [ ] **Step 3:** Commit: `feat: add Helmet + CSRF protection plugin`
+
+### Task 12.2: Webhook Signature Verification
+
+All inbound webhooks (Razorpay, Resend, Novu) must be verified before processing.
+
+**File:** `src/app/features/payments/webhookVerification.ts`
+
+```typescript
+// src/app/features/payments/webhookVerification.ts
+import { createHmac, timingSafeEqual } from "node:crypto"
+import { Effect } from "effect"
+import { UnauthorizedError } from "../../../core/errors/commonErrors.ts"
+
+export const verifyRazorpaySignature = (
+  rawBody: Buffer,
+  signature: string,
+  secret: string
+): Effect.Effect<void, UnauthorizedError> =>
+  Effect.sync(() => {
+    const expected = createHmac("sha256", secret).update(rawBody).digest("hex")
+    const expectedBuf = Buffer.from(expected, "hex")
+    const actualBuf = Buffer.from(signature, "hex")
+    if (expectedBuf.length !== actualBuf.length) return false
+    return timingSafeEqual(expectedBuf, actualBuf)
+  }).pipe(
+    Effect.flatMap((valid) =>
+      valid
+        ? Effect.void
+        : Effect.fail(new UnauthorizedError({ reason: "Invalid webhook signature" }))
+    )
+  )
+
+// Generic HMAC-SHA256 verifier — reuse for Resend, Novu, any other provider
+export const verifyHmacSignature = (
+  payload: Buffer,
+  signature: string,
+  secret: string,
+  algorithm: "sha256" | "sha512" = "sha256"
+): Effect.Effect<void, UnauthorizedError> =>
+  Effect.sync(() => {
+    const expected = createHmac(algorithm, secret).update(payload).digest("hex")
+    return timingSafeEqual(Buffer.from(expected, "hex"), Buffer.from(signature, "hex"))
+  }).pipe(
+    Effect.flatMap((valid) =>
+      valid
+        ? Effect.void
+        : Effect.fail(new UnauthorizedError({ reason: "Invalid webhook signature" }))
+    )
+  )
+```
+
+- [ ] **Step 1:** Create `src/app/features/payments/webhookVerification.ts`
+- [ ] **Step 2:** Apply `verifyRazorpaySignature` in payment webhook route (raw body required — use `@fastify/formbody` or `addContentTypeParser`)
+- [ ] **Step 3:** Add `RAZORPAY_WEBHOOK_SECRET` to `AppConfig`
+- [ ] **Step 4:** Commit: `feat: add HMAC webhook signature verification`
+
+### Task 12.3: Secrets Rotation Runbook
+
+**File:** `docs/runbooks/secrets-rotation.md`
+
+```markdown
+## Secrets Rotation Runbook
+
+### Access/Refresh Token Secrets
+1. Generate new secret: `openssl rand -base64 64`
+2. Set new value as `ACCESS_TOKEN_SECRET_NEW` in TF_VAR
+3. Deploy: new tokens use new secret; existing tokens are invalidated on next verify
+4. All active sessions must re-login (acceptable — PASETO tokens are short-lived)
+
+### DB Password Rotation
+1. Update in AWS Secrets Manager / GCP Secret Manager / Azure Key Vault
+2. `TF_VAR_db_password=<new>` → `terraform apply`
+3. RDS supports immediate password change; connection pool reconnects automatically
+
+### Redis Password
+1. Redis does not support zero-downtime password rotation
+2. Maintenance window required: `requirepass <new>` → rolling restart of app
+
+### Schedule
+- Token secrets: every 90 days
+- DB passwords: every 180 days
+- API keys (Resend, Gemini, etc.): on compromise only
+```
+
+- [ ] **Step 1:** Create `docs/runbooks/secrets-rotation.md`
+- [ ] **Step 2:** Commit: `docs: add secrets rotation runbook`
+
+### Phase 12 Decisions
+
+| # | Decision | Value |
+|---|---|---|
+| 64 | **CSRF strategy** | Double-submit signed cookie; exempt `/api/v1/auth/oauth/**` and webhook routes |
+| 65 | **Webhook verification** | `timingSafeEqual` always; reject if header missing (no soft fail) |
+| 66 | **hpp replacement** | `exactOptionalPropertyTypes: true` in tsconfig + Effect Schema coercion replaces hpp |
+| 67 | **mongo-sanitize replacement** | Mongoose lean queries + Effect Schema + `noImplicitAny` replace `express-mongo-sanitize` |
+
+---
+
+## Phase 13: Rate Limiting
+
+### Context
+
+`@fastify/rate-limit: ^10.3.0` is installed. Rate limiting is mentioned in the plan (suggestion #11) but has no implementation tasks. A single global limit is too loose for auth endpoints.
+
+### Task 13.1: Rate Limit Plugin
+
+**File:** `src/app/plugins/rateLimiting.ts`
+
+```typescript
+// src/app/plugins/rateLimiting.ts
+import fp from "fastify-plugin"
+import type { FastifyInstance } from "fastify"
+import rateLimit from "@fastify/rate-limit"
+import { RedisService } from "../../infra/redis/redisService.ts"
+
+// Route-level config type extension (in src/app/types/fastify.d.ts)
+// declare module "fastify" {
+//   interface FastifyContextConfig { rateLimit?: false | RateLimitOptions }
+// }
+
+export const rateLimitPlugin = fp(async (fastify: FastifyInstance) => {
+  const redis = fastify.effectRuntime.runSync(RedisService)
+
+  await fastify.register(rateLimit, {
+    global: true,
+    max: 100,
+    timeWindow: "15 minutes",
+    redis: redis.client,   // distributed rate limiting via Redis
+    keyGenerator: (req) => req.headers["x-forwarded-for"]?.toString() ?? req.ip,
+    errorResponseBuilder: (_req, context) => ({
+      success: false,
+      statusCode: 429,
+      message: `Rate limit exceeded. Retry after ${context.after}`,
+      data: null,
+    }),
+  })
+})
+
+// Per-route overrides (applied directly in route definitions):
+export const authRateLimits = {
+  login:          { max: 5,  timeWindow: "1 minute" },
+  register:       { max: 3,  timeWindow: "1 minute" },
+  forgotPassword: { max: 2,  timeWindow: "1 minute" },
+  refreshToken:   { max: 10, timeWindow: "1 minute" },
+  verifyOtp:      { max: 5,  timeWindow: "5 minutes" },
+} as const
+```
+
+**Usage in route:**
+
+```typescript
+fastify.post("/login", {
+  config: { rateLimit: authRateLimits.login },
+  schema: { body: loginSchema },
+}, loginHandler)
+```
+
+- [ ] **Step 1:** Add `TooManyRequestsError` to `src/core/errors/commonErrors.ts`
+- [ ] **Step 2:** Add `TooManyRequestsError` to `AppError` union and `toHttpError` in `httpErrors.ts` (→ 429)
+- [ ] **Step 3:** Create `src/app/plugins/rateLimiting.ts`
+- [ ] **Step 4:** Register `rateLimitPlugin` in `src/app/app.ts` before routes
+- [ ] **Step 5:** Apply `authRateLimits.*` overrides to all auth routes (login, register, forgot-password, refresh, verify-otp)
+- [ ] **Step 6:** Commit: `feat: add Redis-backed rate limiting with per-route auth overrides`
+
+---
+
+## Phase 14: Load Testing
+
+### Context
+
+No load tests exist. k6 is the chosen tool (Grafana k6 — open source, script-based, CI-friendly). Artillery is not used (k6 gives better programmatic control).
+
+### Task 14.1: k6 Test Scenarios
+
+**File structure:**
+
+```
+tests/load/
+  k6/
+    scenarios/
+      baseline.js       — 10 VUs × 1 min, p95 < 200ms
+      load.js           — 100 VUs × 5 min, p95 < 500ms, error rate < 1%
+      stress.js         — ramp to 500 VUs, find breaking point
+      spike.js          — 0 → 1000 VUs in 30s, recovery < 60s
+    helpers/
+      auth.js           — login and cache token for test user
+      thresholds.js     — shared threshold constants
+    config/
+      options.js        — shared k6 options
+```
+
+**`tests/load/k6/scenarios/baseline.js`:**
+
+```javascript
+import http from "k6/http"
+import { check, sleep } from "k6"
+import { Counter, Trend } from "k6/metrics"
+import { thresholds } from "../helpers/thresholds.js"
+
+export const options = {
+  vus: 10,
+  duration: "1m",
+  thresholds: {
+    http_req_duration: ["p(95)<200"],
+    http_req_failed: ["rate<0.01"],
+  },
+}
+
+const BASE_URL = __ENV.BASE_URL ?? "http://localhost:3000"
+
+export default function () {
+  const res = http.get(`${BASE_URL}/api/v1/health`)
+  check(res, { "status 200": (r) => r.status === 200 })
+  sleep(1)
+}
+```
+
+**`tests/load/k6/scenarios/stress.js`:**
+
+```javascript
+export const options = {
+  stages: [
+    { duration: "2m",  target: 50  },   // ramp up
+    { duration: "5m",  target: 200 },   // sustained load
+    { duration: "2m",  target: 500 },   // stress
+    { duration: "1m",  target: 0   },   // ramp down
+  ],
+  thresholds: {
+    http_req_duration: ["p(99)<2000"],
+    http_req_failed:   ["rate<0.05"],
+  },
+}
+```
+
+**`package.json` scripts:**
+
+```json
+{
+  "load:baseline": "k6 run tests/load/k6/scenarios/baseline.js",
+  "load:stress":   "k6 run tests/load/k6/scenarios/stress.js",
+  "load:spike":    "k6 run tests/load/k6/scenarios/spike.js"
+}
+```
+
+**CI integration** (run on release candidate tags only — not every PR):
+
+```yaml
+# .github/workflows/load-test.yml
+on:
+  push:
+    tags: ["rc-*"]
+jobs:
+  load-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: grafana/k6-action@v0.3.1
+        with:
+          filename: tests/load/k6/scenarios/baseline.js
+        env:
+          BASE_URL: ${{ secrets.STAGING_URL }}
+```
+
+- [ ] **Step 1:** Install k6 locally: `brew install k6` (or via apt in CI — `grafana/k6-action`)
+- [ ] **Step 2:** Create `tests/load/k6/` directory with 4 scenarios + helpers
+- [ ] **Step 3:** Add `load:*` scripts to `package.json`
+- [ ] **Step 4:** Create `.github/workflows/load-test.yml` (triggers on `rc-*` tags)
+- [ ] **Step 5:** Commit: `test: add k6 load test scenarios`
+
+### Phase 14 Thresholds (SLOs)
+
+| Scenario | p95 target | p99 target | Error rate |
+|---|---|---|---|
+| Baseline (10 VUs) | < 200ms | < 500ms | < 0.1% |
+| Load (100 VUs) | < 500ms | < 1s | < 1% |
+| Stress (500 VUs) | < 2s | < 5s | < 5% |
+| Spike (1000 VUs) | — | — | Recovery < 60s |
+
+---
+
+## Phase 15: Disaster Recovery
+
+### Context
+
+No DR plan exists. RTO/RPO targets must be defined before the first production deployment.
+
+### Task 15.1: DR Plan Document
+
+**File:** `docs/runbooks/disaster-recovery.md`
+
+```markdown
+## ScaleForge Disaster Recovery Plan
+
+### RTO / RPO Targets
+
+| Component | RTO (time to recover) | RPO (max data loss) |
+|---|---|---|
+| API Server (ECS) | < 5 minutes | N/A (stateless) |
+| MongoDB (Atlas) | < 30 minutes | < 5 minutes (continuous backup) |
+| PostgreSQL (Neon/RDS) | < 30 minutes | < 5 minutes (PITR enabled) |
+| Redis (ElastiCache) | < 15 minutes | 0 (cache — no RPO requirement) |
+| RabbitMQ (AmazonMQ) | < 30 minutes | < 5 minutes (durable queues) |
+| S3 Receipts | N/A | 0 (cross-region replication) |
+
+### Failure Scenarios
+
+**1. ECS task crash loop**
+- Alert: Datadog monitor on `ecs.service.running < desired`
+- Action: ECS auto-restarts tasks. If persistent: `terraform apply` to redeploy previous image tag.
+- Runbook: `docs/runbooks/ecs-recovery.md`
+
+**2. MongoDB Atlas primary failure**
+- Atlas handles automatic failover to replica in < 30s
+- Manual action: none required for single-node failure
+- Check: `db.adminCommand({ replSetGetStatus: 1 })`
+
+**3. PostgreSQL (Neon) data corruption**
+- PITR enabled (5-minute granularity in prod)
+- Neon Console → Branch → Restore to point-in-time
+- Restore to new branch, verify, then swap connection string
+
+**4. Full region failure (AWS us-east-1)**
+- GCP and Azure Terraform configs are maintained as standby
+- Action: `terraform apply` in `terraform/gcp/` with latest image tag
+- DNS failover: Cloudflare DNS A-record → GCP Cloud Run URL
+- Expected RTO: < 1 hour
+
+### Backup Schedule
+
+| Data | Mechanism | Frequency | Retention |
+|---|---|---|---|
+| MongoDB | Atlas continuous + daily snapshot | Continuous | 7 days |
+| PostgreSQL | Neon PITR | Continuous | 30 days |
+| S3 receipts | Cross-region replication | Real-time | 7 years (lifecycle) |
+| RabbitMQ | Durable queue persistence | Per-message | Until consumed |
+```
+
+- [ ] **Step 1:** Create `docs/runbooks/disaster-recovery.md`
+- [ ] **Step 2:** Create `docs/runbooks/ecs-recovery.md`
+- [ ] **Step 3:** Add Datadog monitors to `terraform/aws/main.tf` for ECS running count, API error rate > 5%
+- [ ] **Step 4:** Test failover in staging: simulate Postgres connection failure, confirm `HealthCheckError` returns 503 (not 500)
+- [ ] **Step 5:** Commit: `docs: add disaster recovery plan and runbooks`
+
+---
+
+## Phase 16: Multi-tenancy Clarification
+
+### Decision
+
+**Single-tenant confirmed** (Decision from session, reaffirmed here as Decision #68).
+
+All data is scoped to authenticated users. No org/workspace/tenant sharding is needed. Per-resource access control is handled by OpenFGA (Phase 6.3).
+
+**Implications for the codebase:**
+
+| Concern | Resolution |
+|---|---|
+| Database isolation | Single MongoDB database + single PostgreSQL database per deployment |
+| Row-level security | OpenFGA policies (user:X can read resource:Y) |
+| API scoping | All routes require auth; user ID from PASETO token scopes queries |
+| Billing | Single Razorpay account; no per-tenant billing |
+
+**No implementation tasks required.** If multi-tenancy is required in the future, the correct migration path is:
+1. Add `organizationId` branded type to `src/core/types/branded.ts`
+2. Add `organization` field to all Mongoose models and Drizzle schemas
+3. Add `orgId` claim to PASETO token payload
+4. Replace OpenFGA user-resource policies with org-resource policies
+
+---
+
+## Phase 17: Outbound Webhooks
+
+### Context
+
+The app receives webhooks (Razorpay, Resend) but does not yet send them. Outbound webhooks let customers subscribe to events (payment completed, subscription renewed, etc.).
+
+### Task 17.1: Webhook Subscription Schema
+
+**File:** `src/db/schema/webhookSchema.ts`
+
+```typescript
+// src/db/schema/webhookSchema.ts
+import { pgTable, text, timestamp, boolean, integer, jsonb } from "drizzle-orm/pg-core"
+import { createId } from "@paralleldrive/cuid2"
+
+export const webhookSubscriptions = pgTable("webhook_subscriptions", {
+  id:         text("id").primaryKey().$defaultFn(() => createId()),
+  userId:     text("user_id").notNull(),
+  url:        text("url").notNull(),
+  events:     text("events").array().notNull(),   // e.g. ["payment.completed", "subscription.renewed"]
+  secret:     text("secret").notNull(),           // HMAC-SHA256 signing secret (stored encrypted)
+  enabled:    boolean("enabled").notNull().default(true),
+  createdAt:  timestamp("created_at").notNull().defaultNow(),
+  updatedAt:  timestamp("updated_at").notNull().defaultNow(),
+})
+
+export const webhookDeliveries = pgTable("webhook_deliveries", {
+  id:              text("id").primaryKey().$defaultFn(() => createId()),
+  subscriptionId:  text("subscription_id").notNull().references(() => webhookSubscriptions.id),
+  event:           text("event").notNull(),
+  payload:         jsonb("payload").notNull(),
+  status:          text("status").notNull().default("pending"),  // pending | delivered | failed
+  statusCode:      integer("status_code"),
+  attempts:        integer("attempts").notNull().default(0),
+  lastAttemptAt:   timestamp("last_attempt_at"),
+  nextAttemptAt:   timestamp("next_attempt_at"),
+  createdAt:       timestamp("created_at").notNull().defaultNow(),
+})
+```
+
+### Task 17.2: Webhook Worker
+
+**File:** `src/workers/webhookWorker.ts`
+
+```typescript
+// src/workers/webhookWorker.ts
+// Consumed from RabbitMQ queue "webhooks.outbound"
+// Delivers to subscriber URL with HMAC-SHA256 signature
+import { Effect, pipe } from "effect"
+import { request } from "undici"
+import { createHmac } from "node:crypto"
+import { RabbitMQPublishError } from "../core/errors/infraErrors.ts"
+
+interface WebhookJob {
+  subscriptionId: string
+  event: string
+  payload: unknown
+  secret: string
+  url: string
+  attempt: number
+}
+
+const MAX_ATTEMPTS = 5
+
+const deliverWebhook = (job: WebhookJob) =>
+  Effect.gen(function* () {
+    const body = JSON.stringify({ event: job.event, data: job.payload })
+    const signature = createHmac("sha256", job.secret).update(body).digest("hex")
+
+    const res = yield* Effect.tryPromise({
+      try: () =>
+        request(job.url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-ScaleForge-Signature": `sha256=${signature}`,
+            "X-ScaleForge-Event": job.event,
+          },
+          body,
+        }),
+      catch: (error) => new RabbitMQPublishError({ exchange: "webhooks", routingKey: job.event, cause: error }),
+    })
+
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      return yield* Effect.fail(
+        new RabbitMQPublishError({
+          exchange: "webhooks",
+          routingKey: job.event,
+          cause: new Error(`HTTP ${res.statusCode}`),
+        })
+      )
+    }
+  })
+
+// Retry with exponential backoff — backoff delays: 30s, 5m, 30m, 2h, 8h
+const backoffDelays = [30, 300, 1800, 7200, 28800] as const
+
+export const scheduleRetry = (job: WebhookJob) => {
+  if (job.attempt >= MAX_ATTEMPTS) return Effect.void  // mark failed in DB
+  const delaySecs = backoffDelays[job.attempt] ?? 28800
+  // re-enqueue with nextAttemptAt = now + delaySecs
+  return Effect.void
+}
+```
+
+- [ ] **Step 1:** Create `src/db/schema/webhookSchema.ts`
+- [ ] **Step 2:** Run `bun run db:generate` to generate Drizzle migration
+- [ ] **Step 3:** Create `src/workers/webhookWorker.ts`
+- [ ] **Step 4:** Add `webhooks.outbound` queue to RabbitMQ exchange setup in `rabbitmqService.ts`
+- [ ] **Step 5:** Create `src/app/features/webhooks/webhookRoutes.ts` — CRUD for subscriptions (admin only)
+- [ ] **Step 6:** Commit: `feat: add outbound webhook delivery system`
+
+### Phase 17 Decisions
+
+| # | Decision | Value |
+|---|---|---|
+| 69 | **Webhook transport** | RabbitMQ queue `webhooks.outbound` → `webhookWorker` via `@platformatic/job-queue` |
+| 70 | **Signature format** | `X-ScaleForge-Signature: sha256=<hmac>` (matches GitHub/Stripe convention) |
+| 71 | **Secret storage** | Encrypted at rest in PostgreSQL; decrypted only in worker at delivery time |
+| 72 | **Retry schedule** | 5 attempts: 30s, 5m, 30m, 2h, 8h (exponential; matches Stripe's schedule) |
+
+---
+
+## Phase 18: SDK Generation from OpenAPI
+
+### Context
+
+`@fastify/swagger` and `@fastify/swagger-ui` are installed. The OpenAPI spec is generated at startup. An SDK lets frontend clients consume the API with full type safety, without hand-writing fetch calls.
+
+### Task 18.1: OpenAPI Spec Export
+
+**File:** `scripts/exportOpenApiSpec.ts`
+
+```typescript
+// scripts/exportOpenApiSpec.ts
+// Starts Fastify, captures the OpenAPI JSON, writes to sdk/openapi.json, then exits.
+import { writeFile, mkdir } from "node:fs/promises"
+import { buildApp } from "../src/app/app.ts"
+
+const app = await buildApp({ logger: false })
+await app.ready()
+
+const spec = app.swagger()
+await mkdir("sdk", { recursive: true })
+await writeFile("sdk/openapi.json", JSON.stringify(spec, null, 2))
+await app.close()
+console.log("OpenAPI spec exported to sdk/openapi.json")
+```
+
+**`package.json` script:**
+
+```json
+{
+  "sdk:export": "bun run scripts/exportOpenApiSpec.ts",
+  "sdk:generate": "bun run sdk:export && bunx @hey-api/openapi-ts -i sdk/openapi.json -o sdk/client -c @hey-api/client-fetch"
+}
+```
+
+### Task 18.2: SDK Package Setup
+
+**File:** `sdk/package.json`
+
+```json
+{
+  "name": "@scaleforge/sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./client/index.ts",
+  "types": "./client/index.ts",
+  "exports": {
+    ".": "./client/index.ts"
+  }
+}
+```
+
+**CI publish workflow (`.github/workflows/sdk.yml`):**
+
+```yaml
+on:
+  push:
+    tags: ["v*"]
+jobs:
+  publish-sdk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - run: bun run sdk:generate
+      - run: cd sdk && npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+```
+
+- [ ] **Step 1:** `bun add -d @hey-api/openapi-ts @hey-api/client-fetch`
+- [ ] **Step 2:** Create `scripts/exportOpenApiSpec.ts`
+- [ ] **Step 3:** Create `sdk/package.json`
+- [ ] **Step 4:** Add `sdk:export` and `sdk:generate` scripts
+- [ ] **Step 5:** Add `sdk/client/` to `.gitignore` (generated — do not commit)
+- [ ] **Step 6:** Create `.github/workflows/sdk.yml`
+- [ ] **Step 7:** Commit: `feat: add OpenAPI spec export and SDK generation pipeline`
+
+### Phase 18 Decisions
+
+| # | Decision | Value |
+|---|---|---|
+| 73 | **SDK generator** | `@hey-api/openapi-ts` — TypeScript-first, tree-shakeable, Bun-compatible |
+| 74 | **SDK client** | `@hey-api/client-fetch` — uses native `fetch`, no axios dep |
+| 75 | **Publish trigger** | Version tags `v*` only; not every merge |
+| 76 | **SDK source of truth** | OpenAPI spec generated from Fastify + Effect Schema (via `JSONSchema.make`) |
+
+---
+
+## Phase 19: Feature Flags
+
+### Context
+
+No feature flag system exists. A DB-backed solution avoids introducing an external service dependency in v1. LRU cache keeps latency < 1ms for flag reads.
+
+### Task 19.1: Feature Flag Schema
+
+**File:** `src/db/schema/featureFlagSchema.ts`
+
+```typescript
+// src/db/schema/featureFlagSchema.ts
+import { pgTable, text, boolean, integer, timestamp, jsonb } from "drizzle-orm/pg-core"
+
+export const featureFlags = pgTable("feature_flags", {
+  name:               text("name").primaryKey(),           // e.g. "new-billing-ui"
+  enabled:            boolean("enabled").notNull().default(false),
+  rolloutPercentage:  integer("rollout_percentage").notNull().default(0), // 0-100
+  allowList:          text("allow_list").array().default([]),             // specific user IDs always enabled
+  metadata:           jsonb("metadata"),
+  createdAt:          timestamp("created_at").notNull().defaultNow(),
+  updatedAt:          timestamp("updated_at").notNull().defaultNow(),
+})
+```
+
+### Task 19.2: FeatureFlagService
+
+**File:** `src/infra/featureFlags/featureFlagService.ts`
+
+```typescript
+// src/infra/featureFlags/featureFlagService.ts
+import { Context, Effect, Layer } from "effect"
+import { LRUCache } from "lru-cache"
+import { PostgresService } from "../postgres/postgresService.ts"
+import { featureFlags } from "../../db/schema/featureFlagSchema.ts"
+import { eq } from "drizzle-orm"
+import type { UserId } from "../../core/types/branded.ts"
+
+// Named flag keys — add new flags here for full type coverage
+export type FeatureFlagName =
+  | "new-billing-ui"
+  | "ai-search"
+  | "webhook-delivery"
+  | "pdf-receipts"
+  | "openfga-authz"
+
+export interface FeatureFlagService {
+  readonly isEnabled: (flag: FeatureFlagName, userId?: UserId) => Effect.Effect<boolean>
+  readonly invalidate: (flag: FeatureFlagName) => Effect.Effect<void>
+}
+
+export const FeatureFlagService = Context.GenericTag<FeatureFlagService>("@infra/FeatureFlagService")
+
+const make = Effect.gen(function* () {
+  const pg = yield* PostgresService
+
+  // LRU cache: max 500 flags, 30s TTL
+  const cache = new LRUCache<string, { enabled: boolean; rolloutPercentage: number; allowList: string[] }>({
+    max: 500,
+    ttl: 30_000,
+    allowStale: false,
+  })
+
+  const fetchFlag = (flag: FeatureFlagName) =>
+    pg.query((db) =>
+      db.select().from(featureFlags).where(eq(featureFlags.name, flag)).limit(1)
+    )
+
+  return FeatureFlagService.of({
+    isEnabled: (flag, userId) =>
+      Effect.gen(function* () {
+        const cached = cache.get(flag)
+        const row = cached ?? (yield* fetchFlag(flag).pipe(
+          Effect.map(([r]) => r ?? { enabled: false, rolloutPercentage: 0, allowList: [] }),
+          Effect.tap((r) => Effect.sync(() => cache.set(flag, r)))
+        ))
+
+        if (!row.enabled) return false
+        if (userId != null && row.allowList.includes(userId)) return true
+        if (row.rolloutPercentage === 100) return true
+        if (row.rolloutPercentage === 0) return false
+        // Deterministic rollout by user ID hash
+        const hash = [...(userId ?? "anon")].reduce((acc, c) => acc + c.charCodeAt(0), 0)
+        return (hash % 100) < row.rolloutPercentage
+      }),
+
+    invalidate: (flag) =>
+      Effect.sync(() => { cache.delete(flag) }),
+  })
+})
+
+export const FeatureFlagServiceLive = Layer.effect(FeatureFlagService, make)
+```
+
+### Task 19.3: Feature Flag Admin Routes
+
+**File:** `src/app/features/admin/featureFlagRoutes.ts`
+
+```typescript
+// GET  /api/v1/admin/flags          — list all flags
+// GET  /api/v1/admin/flags/:name    — get single flag
+// PUT  /api/v1/admin/flags/:name    — update flag (enable/disable/rollout)
+// POST /api/v1/admin/flags          — create flag
+```
+
+All admin routes behind `role:admin` OpenFGA check.
+
+- [ ] **Step 1:** Create `src/db/schema/featureFlagSchema.ts`
+- [ ] **Step 2:** Run `bun run db:generate` for migration
+- [ ] **Step 3:** Create `src/infra/featureFlags/featureFlagService.ts`
+- [ ] **Step 4:** Add `FeatureFlagServiceLive` to `AppLayer` in `src/runtime/appLayer.ts`
+- [ ] **Step 5:** Create `src/app/features/admin/featureFlagRoutes.ts`
+- [ ] **Step 6:** Add `FeatureFlagService` to lruCaches inventory in `src/infra/cache/lruCaches.ts`
+- [ ] **Step 7:** Commit: `feat: add DB-backed feature flag service with LRU cache`
+
+### Phase 19 Decisions
+
+| # | Decision | Value |
+|---|---|---|
+| 77 | **Flag storage** | PostgreSQL `feature_flags` table — no external service dep in v1 |
+| 78 | **Cache TTL** | 30s — stale flags for up to 30s acceptable; instant invalidation available via admin route |
+| 79 | **Rollout mechanism** | Deterministic hash of `userId % 100 < rolloutPercentage` — consistent per user |
+| 80 | **Flag names** | String literal union `FeatureFlagName` — TypeScript compile error for unknown flag keys |
+
+---
+
+## Gap Analysis Summary
+
+| Phase | Gap | Effort | Blocks |
+|---|---|---|---|
+| **8** | Observability (OTel + Pino + Sentry + Prometheus) | 4–6 hours | Production debug visibility |
+| **9** | CI/CD Pipeline (GitHub Actions + Dockerfile) | 3–4 hours | Deployment automation |
+| **10** | Local Dev Docker Compose | 1–2 hours | Developer onboarding |
+| **11** | DB Migration CI Gate | 1–2 hours | Safe schema changes |
+| **12** | Security Hardening (CSRF + webhook sig + secrets rotation) | 3–4 hours | PCI/compliance baseline |
+| **13** | Rate Limiting (per-route auth throttling) | 2–3 hours | Credential stuffing protection |
+| **14** | Load Testing (k6 scenarios) | 3–4 hours | SLO validation before launch |
+| **15** | Disaster Recovery (RTO/RPO + runbooks) | 2–3 hours | Incident response |
+| **16** | Multi-tenancy | 0 hours | Confirmed single-tenant — no work needed |
+| **17** | Outbound Webhooks | 4–6 hours | Customer integrations |
+| **18** | SDK Generation | 2–3 hours | Frontend DX |
+| **19** | Feature Flags | 3–4 hours | Safe feature rollout |
+
+**Total gap effort: 28–41 hours**
+
+### Recommended Order of Execution
+
+```
+Phase 10 (Docker Compose)     ← Unblocks local dev for all other phases
+  → Phase 11 (Migrations)     ← Unblocks Phase 9 (deploy order is: migrate → deploy)
+    → Phase 9 (CI/CD)         ← Unblocks automated deployments
+      → Phase 8 (Observability)   ← Must land before first prod traffic
+      → Phase 12 (Security)       ← Must land before first prod traffic
+      → Phase 13 (Rate Limiting)  ← Must land before auth routes go live
+Phase 15 (DR)                 ← Before prod launch
+Phase 17 (Webhooks)           ← After Phase 6.2 (job-queue) lands
+Phase 14 (Load Testing)       ← On release candidate
+Phase 19 (Feature Flags)      ← Before any phased rollout
+Phase 18 (SDK)                ← After API is stable (post Phase 5+6)
+```
