@@ -1,25 +1,18 @@
-
-
-import { describe, it, beforeEach, afterEach, expect } from 'bun:test'
-describe('Health Controller - Unit Tests', () => {
-  let mockReq, mockRes;
+import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+describe("Health Controller - Unit Tests", () => {
+  let _mockReq, _mockRes;
 
   beforeEach(() => {
     // Setup mock request and response objects
-    mockReq = {
-      ip: '127.0.0.1',
-      method: 'GET',
-      originalUrl: '/api/v1/health/self'
+    _mockReq = {
+      ip: "127.0.0.1",
+      method: "GET",
+      originalUrl: "/api/v1/health/self",
     };
 
-    mockRes = {
-      statusCode: 200,
-      headers: {},
+    _mockRes = {
       data: null,
-      status: function (code) {
-        this.statusCode = code;
-        return this;
-      },
+      headers: {},
       json: function (data) {
         this.data = data;
         return this;
@@ -27,12 +20,17 @@ describe('Health Controller - Unit Tests', () => {
       send: function (data) {
         this.data = data;
         return this;
-      }
+      },
+      status: function (code) {
+        this.statusCode = code;
+        return this;
+      },
+      statusCode: 200,
     };
 
     // Mock environment variables
-    process.env.SERVER_ID = 'test-server-1';
-    process.env.HOSTNAME = 'test-container';
+    process.env.SERVER_ID = "test-server-1";
+    process.env.HOSTNAME = "test-container";
   });
 
   afterEach(() => {
@@ -41,36 +39,34 @@ describe('Health Controller - Unit Tests', () => {
     delete process.env.HOSTNAME;
   });
 
-  describe('Controller structure validation', () => {
-    it('should have proper controller functions exported', async () => {
+  describe("Controller structure validation", () => {
+    it("should have proper controller functions exported", async () => {
       // This test validates that the controller exports the expected functions
       // without requiring complex mocking of dependencies
 
       try {
-        const controller = await import('../../src/features/health/healthController.js');
+        const controller = await import("../../src/features/health/healthController.js");
 
-        expect(typeof controller.self === 'function').toBeTruthy();
-        expect(typeof controller.health === 'function').toBeTruthy();
+        expect(typeof controller.self === "function").toBeTruthy();
+        expect(typeof controller.health === "function").toBeTruthy();
 
         // Verify function signatures (they should accept req, res parameters)
-        expect(controller.self.length).toBe(2, 'self function should accept 2 parameters');
-        expect(controller.health.length).toBe(2,
-          'health function should accept 2 parameters'
-        );
+        expect(controller.self.length).toBe(2, "self function should accept 2 parameters");
+        expect(controller.health.length).toBe(2, "health function should accept 2 parameters");
       } catch (error) {
-        assert.fail(`Controller import failed: ${error.message}`);
+        throw new Error(`Controller import failed: ${error.message}`, { cause: error });
       }
     });
 
-    it('should handle environment variable scenarios', () => {
+    it("should handle environment variable scenarios", () => {
       // Test environment variable handling without complex mocking
 
       // Test with environment variables set
-      process.env.SERVER_ID = 'test-server';
-      process.env.HOSTNAME = 'test-host';
+      process.env.SERVER_ID = "test-server";
+      process.env.HOSTNAME = "test-host";
 
-      expect(process.env.SERVER_ID).toBe('test-server');
-      expect(process.env.HOSTNAME).toBe('test-host');
+      expect(process.env.SERVER_ID).toBe("test-server");
+      expect(process.env.HOSTNAME).toBe("test-host");
 
       // Test with environment variables unset
       delete process.env.SERVER_ID;
@@ -80,7 +76,7 @@ describe('Health Controller - Unit Tests', () => {
       expect(process.env.HOSTNAME).toBe(undefined);
     });
 
-    it('should validate timestamp generation', () => {
+    it("should validate timestamp generation", () => {
       const beforeTime = new Date().toISOString();
       const testTime = new Date().toISOString();
       const afterTime = new Date().toISOString();
@@ -94,69 +90,69 @@ describe('Health Controller - Unit Tests', () => {
     });
   });
 
-  describe('Response structure validation', () => {
-    it('should validate expected response structure for self endpoint', () => {
+  describe("Response structure validation", () => {
+    it("should validate expected response structure for self endpoint", () => {
       // Test the expected structure without complex mocking
       const expectedSelfResponse = {
-        server: 'test-server',
-        container: 'test-container',
-        timestamp: new Date().toISOString()
+        container: "test-container",
+        server: "test-server",
+        timestamp: new Date().toISOString(),
       };
 
-      expect(typeof expectedSelfResponse.server === 'string').toBeTruthy();
-      expect(typeof expectedSelfResponse.container === 'string').toBeTruthy();
-      expect(typeof expectedSelfResponse.timestamp === 'string').toBeTruthy();
+      expect(typeof expectedSelfResponse.server === "string").toBeTruthy();
+      expect(typeof expectedSelfResponse.container === "string").toBeTruthy();
+      expect(typeof expectedSelfResponse.timestamp === "string").toBeTruthy();
       expect(new Date(expectedSelfResponse.timestamp).toBeTruthy().getTime() > 0);
     });
 
-    it('should validate expected response structure for health endpoint', () => {
+    it("should validate expected response structure for health endpoint", () => {
       // Test the expected structure without complex mocking
       const expectedHealthResponse = {
         application: {
-          environment: 'test',
-          uptime: '123.45 Seconds',
+          environment: "test",
           memoryUsage: {
-            heapTotal: '256.00 MB',
-            heapUsed: '128.00 MB'
+            heapTotal: "256.00 MB",
+            heapUsed: "128.00 MB",
           },
           pid: 12345,
-          version: 'v22.0.0'
-        },
-        system: {
-          cpuUsage: [0.5, 0.3, 0.2],
-          cpuUsagePercent: '25.50 %',
-          totalMemory: '8192.00 MB',
-          freeMemory: '4096.00 MB',
-          platform: 'linux',
-          arch: 'x64'
+          uptime: "123.45 Seconds",
+          version: "v22.0.0",
         },
         checks: {
-          database: { status: 'healthy' },
-          redis: { status: 'healthy' },
-          memory: { status: 'healthy' },
-          disk: { status: 'healthy' }
+          database: { status: "healthy" },
+          disk: { status: "healthy" },
+          memory: { status: "healthy" },
+          redis: { status: "healthy" },
         },
-        timestamp: new Date().toISOString()
+        system: {
+          arch: "x64",
+          cpuUsage: [0.5, 0.3, 0.2],
+          cpuUsagePercent: "25.50 %",
+          freeMemory: "4096.00 MB",
+          platform: "linux",
+          totalMemory: "8192.00 MB",
+        },
+        timestamp: new Date().toISOString(),
       };
 
       // Validate structure
-      expect(typeof expectedHealthResponse.application === 'object').toBeTruthy();
-      expect(typeof expectedHealthResponse.system === 'object').toBeTruthy();
-      expect(typeof expectedHealthResponse.checks === 'object').toBeTruthy();
-      expect(typeof expectedHealthResponse.timestamp === 'string').toBeTruthy();
+      expect(typeof expectedHealthResponse.application === "object").toBeTruthy();
+      expect(typeof expectedHealthResponse.system === "object").toBeTruthy();
+      expect(typeof expectedHealthResponse.checks === "object").toBeTruthy();
+      expect(typeof expectedHealthResponse.timestamp === "string").toBeTruthy();
 
       // Validate checks structure
       Object.values(expectedHealthResponse.checks).forEach((check) => {
-        expect(typeof check.status === 'string').toBeTruthy();
-        assert.ok(['healthy', 'unhealthy', 'warning'].includes(check.status));
+        expect(typeof check.status === "string").toBeTruthy();
+        expect(["healthy", "unhealthy", "warning"]).toContain(check.status);
       });
     });
   });
 
   // Note: Full controller testing with mocked dependencies would require
   // complex module mocking which is better suited for integration tests
-  describe('Integration testing note', () => {
-    it('should be fully tested in integration test suite', () => {
+  describe("Integration testing note", () => {
+    it("should be fully tested in integration test suite", () => {
       // Controller functions with their dependencies (httpResponse, quicker utils)
       // are better tested in the integration test suite where we can test
       // the actual HTTP endpoints with real responses

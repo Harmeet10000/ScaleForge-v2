@@ -1,63 +1,63 @@
 ```js
 6.  add prometheus, loki and grafana for monitoring and alerting - DONE
 1.  Implement a OpenFGA to enhance scalability, reliability, and security of your authentication service. with permissions - DONE
-1.  make a fucking awesome documentation for the same in Postman or Swagger - DONE
-1.  also add a search engine Elasticsearch for better search capabilities - DONE
-1.  add Gemini system prompts, prompt message structure, LLM settings, structured output, tool calling and RAG - DONE
-1.  make AI-driven features for enhanced user experience and personalization using Gemini API - DONE
-1.  add Novu for push notifications - DONE
-1.  add recommendation system using Convex or AWS personalise/GCP equivalent - DONE
-1.  Shift audit trail to new model - DONE
-1.  make a branch for drizzle + JS for AI features and Postgres extensions - DONE
-1.  add S3 CORS config for multipart upload - DONE
-1.  add ELK stack for logging and monitoring - ABANDONED
-1.  make a Golang version of the same       DONE
-1.  properly implement RabbitMQ for message queuing for modularity and decoupling - Undergoing
-1.  explore Postgres Extensions for enhanced functionality - Undergoing
-1.  rewrite all logic for idempotency in payments, subscription and audit trail by using postgresSQL & drizzle, Neon as db for ACID compliant idenpotent transactions and also leverage RabbitMQ producer and consumer with best practices
-1. add blacklist JWT token after logout in DB or redis
-1. implement websockets for realtime features
-1. Implement CDC for updating Redis cache based on Events in DB
-1.  implement better-auth with reCAPTCHA turnstile/google reCAPTCHA, OAuth/OIDC, last login method
-1.  check performance/stress testing using grafana k6
-1.  add tests in CI before deploying to production
-1.  add SAGA pattern for managing complex workflows and state transitions
-1. check this   mongoose.set('strictQuery', true)
-1. validate all .env in config
-1. Redis Plugins and RedisGears
+2.  make a fucking awesome documentation for the same in Postman or Swagger - DONE
+3.  also add a search engine Elasticsearch for better search capabilities - DONE
+4.  add Gemini system prompts, prompt message structure, LLM settings, structured output, tool calling and RAG - DONE
+5.  make AI-driven features for enhanced user experience and personalization using Gemini API - DONE
+7.  add Novu for push notifications - DONE
+8.  add recommendation system using Convex or AWS personalise/GCP equivalent - DONE
+9.  Shift audit trail to new model - DONE
+10.  make a branch for drizzle + JS for AI features and Postgres extensions - DONE
+11.  add S3 CORS config for multipart upload - DONE
+12.  add ELK stack for logging and monitoring - ABANDONED
+13.  make a Golang version of the same       DONE
+14.  properly implement RabbitMQ for message queuing for modularity and decoupling - Undergoing
+15.  explore Postgres Extensions for enhanced functionality - Undergoing
+16.  rewrite all logic for idempotency in payments, subscription and audit trail by using postgresSQL & drizzle, Neon as db for ACID compliant idenpotent transactions and also leverage RabbitMQ producer and consumer with best practices
+17. add blacklist JWT token after logout in DB or redis
+18. implement websockets for realtime features
+19. Implement CDC for updating Redis cache based on Events in DB
+20.  implement better-auth with reCAPTCHA turnstile/google reCAPTCHA, OAuth/OIDC, last login method
+21.  check performance/stress testing using grafana k6
+22.  add tests in CI before deploying to production
+23.  add SAGA pattern for managing complex workflows and state transitions
+24. check this   mongoose.set('strictQuery', true)
+25. validate all .env in config
+26. Redis Plugins and RedisGears
 If you want to be a purist, "True Read-Through" means the application only talks to Redis, and Redis itself talks to MongoDB.
 
 RedisGears: You can write Python or JS scripts that run inside Redis. When a GET command fails (a miss), RedisGears can trigger a script to fetch the data from MongoDB and populate the key before returning the value to your Node.js app
-1. , use idempotent producer pattern: producer stores "I published this event" before sending, checks before republishing. Use connection pooling (not one connection per consumer)
-1. add/append the state of request in the logs in the request lifecycle with possible stack trace
-1. add the state of the message(with stack trace, why failed in each retry, and more) in message queue(DLQ) that has been rejected after retries
-1. use the eslint-plugin-neverthrow in TS version
-1. transfer all the required info in the state event itself (event carried state transfer)
-1. use // ✅ CORRECT: Proper cache with limits
+27. , use idempotent producer pattern: producer stores "I published this event" before sending, checks before republishing. Use connection pooling (not one connection per consumer)
+28. add/append the state of request in the logs in the request lifecycle with possible stack trace
+29. add the state of the message(with stack trace, why failed in each retry, and more) in message queue(DLQ) that has been rejected after retries
+30. use the eslint-plugin-neverthrow in TS version
+31. transfer all the required info in the state event itself (event carried state transfer)
+32. use // ✅ CORRECT: Proper cache with limits
 const LRU = require('lru-cache');
-1. use bunfig.toml and replace npmrc nvmrc    PARTIAL
-1. use debezium CDC for transactional outbox pattern for workers with rabbitmq-client package
+33. use bunfig.toml and replace npmrc nvmrc    PARTIAL
+34. use debezium CDC for transactional outbox pattern for workers with rabbitmq-client package
    teams end up running Debezium (or Airbyte) + Kafka/Redpanda and just consume events in Node.js with excellent TypeScript support via kafkajs.
-1. make a proper terraform plan for all 3 major cloud providers with dev, staging and prod env and check all useful terraform plugin
-1. this project will follow ports and adapter pattern + more which are useful(dessign patterns)
-1. use shannon for security scanning.
-1. learn more about platformatic's' watt architecture and what can i learn from it  
-1. use platformatic's flame and backgrounf job
-1. decouple message queue logic from rabbitmq and ensure event ordering
-1. checkout async-cache-dedupe from platformatic
-1. undici fetch is not fast, dispatch, stream, request, pipeline is fast
-1. make a node expert agent having streams(streams not event loop based), pino, undici, more
-1. use effect.ts v4 completely every utility it provides
-1. use explicit return types
-1. make document/receipt of payments in PDF
-1. make the next version using hexagonal archtecture using port and adapter pattern
-1. use DI with interfaces with factory and strategy pattern for payment, storage and more
-1. figure out where to use builder pattern 
-1. use for of loop, includes or set Data Structure
-1. use own postgres DB for openFGA
-1. use Temporal API for dates currently in browser check for node and bun
-1. MassTransit like library in JS/TS
-1.  RabbitMQ reliability isn’t queues—it’s consumer design:
+35. make a proper terraform plan for all 3 major cloud providers with dev, staging and prod env and check all useful terraform plugin
+36. this project will follow ports and adapter pattern + more which are useful(dessign patterns)
+37. use shannon for security scanning.
+38. learn more about platformatic's' watt architecture and what can i learn from it  
+39. use platformatic's flame and backgrounf job
+40. decouple message queue logic from rabbitmq and ensure event ordering
+41. checkout async-cache-dedupe from platformatic
+42. undici fetch is not fast, dispatch, stream, request, pipeline is fast
+43. make a node expert agent having streams(streams not event loop based), pino, undici, more
+44. use effect.ts v4 completely every utility it provides
+45. use explicit return types
+46. make document/receipt of payments in PDF
+47. make the next version using hexagonal archtecture using port and adapter pattern
+48. use DI with interfaces with factory and strategy pattern for payment, storage and more
+49. figure out where to use builder pattern 
+50. use for of loop, includes or set Data Structure
+51. use own postgres DB for openFGA
+52. use Temporal API for dates currently in browser check for node and bun
+53. MassTransit like library in JS/TS
+54.  RabbitMQ reliability isn’t queues—it’s consumer design:
 → idempotency + deduplication keys
 gRPC bottleneck isn’t serialization—it’s thread pool starvation under load
 Cache stampede fixes fail at scale unless you combine:
@@ -67,6 +67,8 @@ request collapsing
 Real microservice maturity starts when:
 
 You stop thinking in services and start thinking in failure domains
+55. add CDC, knock, websockets, VS Code thingies
+
 ```
 // logger.ts
 import pino from 'pino';

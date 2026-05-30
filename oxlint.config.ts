@@ -31,6 +31,21 @@ export default defineConfig({
   // - oxc: Core Oxlint rules (always included)
   plugins: ["typescript", "unicorn", "import", "node", "regexp"],
 
+  // Bun runs as a Node.js-compatible runtime with browser globals (fetch, etc.)
+  env: {
+    node: true, // Declares: process, console, Buffer, __dirname, __filename, etc.
+  },
+
+  // Bun provides fetch globally (like browsers / Node 18+)
+  globals: {
+    AbortController: "readonly",
+    FormData: "readonly",
+    Headers: "readonly",
+    Request: "readonly",
+    Response: "readonly",
+    fetch: "readonly",
+  },
+
   rules: {
     // ====== CORRECTNESS RULES (ERROR) ======
     // These catch real bugs and runtime errors - critical for production code
@@ -208,6 +223,18 @@ export default defineConfig({
     "sort-keys": "warn",
     "no-import-type-side-effects": "warn",
 
+    // NOTE: oxlint has `no-restricted-imports` which prevents importing specific
+    // modules by *name* (e.g. ban importing 'lodash'). That is a different use case
+    // from eslint-plugin-import's `no-restricted-paths`, which enforces *directory-level
+    // boundaries* (e.g. "features/ must not import from runtime/") using file-path
+    // patterns. oxlint does not yet have an equivalent for path-based restrictions.
+    //
+    // TODO(oxlint-future): When oxlint ships path-pattern-based import restriction
+    // (tracked at https://github.com/oxc-project/oxc/issues — search "no-restricted-paths"),
+    // replace scripts/check-layers.ts with a native oxlint rule here.
+    // Until then, layer boundary enforcement is handled by `bun run check:layers`.
+    "no-restricted-imports": "warn",
+
     // Misc cleanup & formatting
     "no-useless-computed-key": "warn",
     "no-useless-promise-resolve-reject": "warn",
@@ -265,7 +292,7 @@ export default defineConfig({
     // Error handling & clarity
     "custom-error-definition": "warn",
     "error-message": "warn",
-    "no-process-exit": "warn",
+    // "no-process-exit": "warn",
 
     // Code clarity & idioms
     "filename-case": "warn", // Enforce consistent filename case
