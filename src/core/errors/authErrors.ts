@@ -38,6 +38,10 @@ export class InvalidTokenError extends Data.TaggedError("InvalidTokenError")<{
   readonly reason: string
 }> {}
 
+export class TokenExpiredError extends Data.TaggedError("TokenExpiredError")<{
+  readonly tokenType: "access" | "refresh"
+}> {}
+
 export class InvalidOAuthCredentialsError extends Data.TaggedError("InvalidOAuthCredentialsError")<{
   readonly provider: string
 }> {}

@@ -16,6 +16,7 @@ import { metricsRoutes } from "./features/metrics/metricsRoutes.ts"
 import { healthRoutes } from "./features/health/healthRoutes.ts"
 import { adminFeatureFlagRoutes } from "./features/admin/featureFlagRoutes.ts"
 import { webhookRoutes } from "./features/webhooks/webhookRoutes.ts"
+import { authRoutes } from "./features/auth2/authRoutes.ts"
 
 export const buildApp = async () => {
   const fastify = Fastify({
@@ -61,6 +62,7 @@ export const buildApp = async () => {
   // Versioned API prefix
   await fastify.register(async (api) => {
     await api.register(healthRoutes)
+    await api.register(authRoutes)
     await api.register(adminFeatureFlagRoutes)
     await api.register(webhookRoutes)
     // TODO (Phase 5): await api.register(authRoutes)

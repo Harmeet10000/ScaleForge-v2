@@ -22,6 +22,7 @@ import type {
   InvalidOldPasswordError,
   InvalidTokenError,
   InvalidOAuthCredentialsError,
+  TokenExpiredError,
 } from "./authErrors.ts"
 import type { HealthCheckError } from "./infraErrors.ts"
 
@@ -53,6 +54,7 @@ export type AppError =
   | PasswordSameAsOldError
   | InvalidOldPasswordError
   | InvalidTokenError
+  | TokenExpiredError
   | InvalidOAuthCredentialsError
   | HealthCheckError
   | TooManyRequestsError
@@ -108,6 +110,7 @@ export const toHttpError = (error: AppError): HttpErrorResponse =>
     ),
     Match.tag("InvalidOldPasswordError", () => httpError(401, "Invalid old password")),
     Match.tag("InvalidTokenError", (e) => httpError(401, `Invalid token: ${e.reason}`)),
+    Match.tag("TokenExpiredError", (e) => httpError(401, `${e.tokenType} token has expired`)),
     Match.tag("InvalidOAuthCredentialsError", (e) =>
       httpError(401, `Invalid OAuth credentials: ${e.provider}`)
     ),

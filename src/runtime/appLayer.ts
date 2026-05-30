@@ -3,9 +3,6 @@
  *
  * The single composed Layer that provides ALL services to the app.
  * Dependency rule: core → infra → features → here
- *
- * Nothing in this file imports from features or app/; it only composes
- * infra-layer exports and config.
  */
 
 import { Layer } from "effect"
@@ -20,8 +17,12 @@ import { TracingServiceLive } from "../infra/telemetry/tracingService.ts"
 import { MetricsServiceLive } from "../infra/telemetry/metricsService.ts"
 import { SentryServiceLive } from "../infra/telemetry/sentryService.ts"
 import { FeatureFlagServiceLive } from "../infra/featureFlags/featureFlagService.ts"
+import { TokenServiceLive } from "../app/features/auth2/tokenService.ts"
+import { PasswordServiceLive } from "../app/features/auth2/passwordService.ts"
+import { AuthServiceLive } from "../app/features/auth2/authService.ts"
 
-// All infra services need AppConfig → provide it to the group.
+// ── Infra layer ───────────────────────────────────────────────────────────────
+// All infra services get AppConfig provided once at this boundary.
 const InfraLayer = Layer.mergeAll(
   MongoServiceLive,
   PostgresServiceLive,
@@ -34,7 +35,28 @@ const InfraLayer = Layer.mergeAll(
   FeatureFlagServiceLive,
 ).pipe(Layer.provide(AppConfigLive))
 
-// Logger layer also needs AppConfig.
+// ── Auth layer ────────────────────────────────────────────────────────────────
+// TokenService needs AppConfig. PasswordService is self-contained.
+// AuthService needs Postgres + Token + Password.
+const TokenLayer = TokenServiceLive.pipe(Layer.provide(AppConfigLive))
+const PwLayer = PasswordServiceLive
+
+const AuthLayer = AuthServiceLive.pipe(
+  Layer.provide(Layer.mergeAll(
+    PostgresServiceLive.pipe(Layer.provide(AppConfigLive)),
+    TokenLayer,
+    PwLayer,
+  ))
+)
+
+// ── Logger layer ──────────────────────────────────────────────────────────────
 const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
 
-export const AppLayer = Layer.mergeAll(InfraLayer, LoggerLayer)
+// ── Root layer ────────────────────────────────────────────────────────────────
+export const AppLayer = Layer.mergeAll(
+  InfraLayer,
+  TokenLayer,
+  PwLayer,
+  AuthLayer,
+  LoggerLayer,
+)
