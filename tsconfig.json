@@ -1,81 +1,39 @@
 {
   "compilerOptions": {
-    // Environment setup & latest features
-    "lib": [
-      "ESNext"
-    ],
     "target": "ESNext",
-    "sourceMap": true,
-    "pretty": true,
     "module": "Preserve",
-    "moduleDetection": "force",
-    "jsx": "react-jsx",
-    "allowJs": true,
-    "plugins": [
-      {
-        "name": "@effect/language-service"
-      }
-    ],
-    // Node.js compatibility
-    "types": [
-      "bun"
-    ],
-    // Must haves
-    "paths": {
-      "@/*": [
-        "./src/app/*"
-      ]
-    },
-    // Bundler mode
-    "moduleResolution": "bundler",
-    "allowImportingTsExtensions": true,
-    "verbatimModuleSyntax": true,
-    "noEmit": true,
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    // Best practices
-    // "alwaysStrict": true,
+    "moduleResolution": "Bundler",
     "strict": true,
-    // "strictNullChecks": false,
-    // "strictFunctionTypes": false,
-    // "useUnknownInCatchVariables": true,
-    // "watchFile": "useFsEvents",
-    // "watchDirectory": "useFsEvents",
-    // "generateCpuProfile": "profile.cpuprofile",
-    // "experimentalDecorators": true,
-    // "forceConsistentCasingInFileNames": true,
-    // "importHelpers": true,
-    // "importsNotUsedAsValues": "remove",
-    // "inlineSources": true,
-    // "diagnostics": true,
-    // "listEmittedFiles": true,
-    // "noResolve": true,
-    // "useDefineForClassFields": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
     "noImplicitOverride": true,
     "allowUnusedLabels": false,
     "allowUnreachableCode": false,
-    "noUncheckedSideEffectImports": true,
-    // Optional But Highly Recommended
     "erasableSyntaxOnly": true,
-    "noImplicitAny": true,
-    "noErrorTruncation": true,
-    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "declaration": true,
+    "noEmit": true,
+    "allowJs": false,
     "checkJs": false,
-    // Some stricter flags (disabled by default)
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "noPropertyAccessFromIndexSignature": true
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+    "noErrorTruncation": true,
+    "types": ["bun"],
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "plugins": [
+      { "name": "@effect/language-service" }
+    ]
   },
-  "include": [
-    "src/**/*.ts",
-    "tests/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "build"
-  ]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.ts"],
+  "exclude": ["node_modules", "dist", "build"]
 }
