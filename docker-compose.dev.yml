@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:8
+    ports: ["27017:27017"]
+    volumes: ["mongo_data:/data/db"]
+    environment:
+      MONGO_INITDB_DATABASE: scaleforge_dev
+
+  postgres:
+    image: postgres:16-alpine
+    ports: ["5432:5432"]
+    volumes: ["pg_data:/var/lib/postgresql/data"]
+    environment:
+      POSTGRES_USER: scaleforge
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: scaleforge_dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scaleforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    command: redis-server --requirepass devpassword
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: scaleforge
+      RABBITMQ_DEFAULT_PASS: devpassword
+
+  openfga:
+    image: openfga/openfga:latest
+    ports: ["8080:8080"]
+    command: run --datastore-engine postgres --datastore-uri "postgres://scaleforge:devpassword@postgres:5432/scaleforge_dev?search_path=openfga"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  openfga-migrate:
+    image: openfga/openfga:latest
+    command: migrate --datastore-engine postgres --datastore-uri "postgres://scaleforge:devpassword@postgres:5432/scaleforge_dev?search_path=openfga"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  mongo_data:
+  pg_data:

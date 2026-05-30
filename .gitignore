@@ -57,6 +57,7 @@ uploads/
 # .env.local
 .env
 .env.*
+!.env.example
 
 # Other
 .history
