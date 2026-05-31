@@ -48,6 +48,18 @@ export interface AppConfig {
   readonly email: { readonly resendKey: Redacted.Redacted<string> }
   readonly novu: { readonly apiKey: Redacted.Redacted<string> }
   readonly observability: { readonly lokiHost: string }
+  readonly openfga: {
+    readonly apiUrl: string
+    readonly storeId: string
+    readonly modelId: string
+    /** "none" | "api_token" | "client_credentials" */
+    readonly credentialsMethod: string
+    readonly apiToken: Redacted.Redacted<string>
+    readonly tokenIssuer: string
+    readonly apiAudience: string
+    readonly clientId: string
+    readonly clientSecret: Redacted.Redacted<string>
+  }
 }
 
 export const AppConfig = Context.Service<AppConfig>("@config/AppConfig")
@@ -144,6 +156,27 @@ const make = Effect.gen(function* () {
   // Observability
   const lokiHost = yield* Config.string("LOKI_HOST").pipe(Config.withDefault(""))
 
+  // OpenFGA
+  const openfgaApiUrl = yield* Config.string("OPENFGA_API_URL").pipe(Config.withDefault("http://localhost:8080"))
+  const openfgaStoreId = yield* Config.string("OPENFGA_STORE_ID").pipe(Config.withDefault(""))
+  const openfgaModelId = yield* Config.string("OPENFGA_MODEL_ID").pipe(Config.withDefault(""))
+  const openfgaCredentialsMethod = yield* Config.string("OPENFGA_CREDENTIALS_METHOD").pipe(
+    Config.withDefault("none")
+  )
+  const openfgaApiToken = yield* Config.redacted("OPENFGA_API_TOKEN").pipe(
+    Config.withDefault(Redacted.make(""))
+  )
+  const openfgaTokenIssuer = yield* Config.string("OPENFGA_API_TOKEN_ISSUER").pipe(
+    Config.withDefault("")
+  )
+  const openfgaApiAudience = yield* Config.string("OPENFGA_API_AUDIENCE").pipe(
+    Config.withDefault("")
+  )
+  const openfgaClientId = yield* Config.string("OPENFGA_CLIENT_ID").pipe(Config.withDefault(""))
+  const openfgaClientSecret = yield* Config.redacted("OPENFGA_CLIENT_SECRET").pipe(
+    Config.withDefault(Redacted.make(""))
+  )
+
   return AppConfig.of({
     port,
     nodeEnv,
@@ -179,6 +212,17 @@ const make = Effect.gen(function* () {
     email: { resendKey },
     novu: { apiKey: novuApiKey },
     observability: { lokiHost },
+    openfga: {
+      apiUrl: openfgaApiUrl,
+      storeId: openfgaStoreId,
+      modelId: openfgaModelId,
+      credentialsMethod: openfgaCredentialsMethod,
+      apiToken: openfgaApiToken,
+      tokenIssuer: openfgaTokenIssuer,
+      apiAudience: openfgaApiAudience,
+      clientId: openfgaClientId,
+      clientSecret: openfgaClientSecret,
+    },
   })
 })
 

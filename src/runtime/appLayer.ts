@@ -22,6 +22,7 @@ import { PasswordServiceLive } from "../app/features/auth2/passwordService.ts"
 import { AuthServiceLive } from "../app/features/auth2/authService.ts"
 import { ApiKeyServiceLive } from "../app/features/auth2/apiKeyService.ts"
 import { LeaderboardServiceLive } from "../app/features/leaderboard/leaderboardService.ts"
+import { OpenFgaServiceLive } from "../app/features/authz/openFgaService.ts"
 
 // ── Infra layer ───────────────────────────────────────────────────────────────
 // All infra services get AppConfig provided once at this boundary.
@@ -67,6 +68,9 @@ const LeaderboardLayer = LeaderboardServiceLive.pipe(
   ))
 )
 
+// OpenFgaService needs AppConfig only (HTTP client, no DB)
+const FgaLayer = OpenFgaServiceLive.pipe(Layer.provide(AppConfigLive))
+
 // ── Logger layer ──────────────────────────────────────────────────────────────
 const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
 
@@ -78,5 +82,6 @@ export const AppLayer = Layer.mergeAll(
   AuthLayer,
   ApiKeyLayer,
   LeaderboardLayer,
+  FgaLayer,
   LoggerLayer,
 )
