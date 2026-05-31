@@ -73,7 +73,16 @@ You stop thinking in services and start thinking in failure domains
 oh-my-opencode
 opencode-skillful deprecated?
 darrenhinde/OpenAgentsControl /oac:setup --core
-
+Recommended execution order: Phase 10 → 11 → 9 → 8/12/13 → 15 → 17 → 14 → 19 → 18
+57. see if adding webhook help other worker services if yes add it use the best practices aand that.
+after this replace search feature implementation currently on elastic search with these
+/home/harmeet/Desktop/Projects/langchain-fastapi-production/.github/skills/pg-textsearch-skill
+/home/harmeet/Desktop/Projects/langchain-fastapi-production/.github/skills/pgvector-skill
+/home/harmeet/Desktop/Projects/langchain-fastapi-production/src/app/features/search
+python implementation that i would like to adopt
+ask for more clarification when confused. also see the existing pipeline for elasticsearch see that can and needs to be adopted for easy scaling, good performance, reflecting real world use cases for comapnies like flippart. 
+make a detailed plan first. use relevant skills that you require for brainstorming. after that move to the next parts of phase 6
+when asking for clarification also give me pros and cons of each proposed solution such that i can make a opinionated chice from them
 
 ```
 // logger.ts

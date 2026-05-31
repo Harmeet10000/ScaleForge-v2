@@ -8,5 +8,34 @@
         "opencode-scheduler",
         "opencode-firecrawl",
         "opencode-conductor-plugin"        
-  ]
+  ],
+"skills": {
+    "paths": [
+      ".opencode/skills"
+    ]
+  },
+  "permission": {
+    "bash": {
+      "*": "ask",
+      "uv *": "allow",
+      "pytest *": "allow",
+      "ruff *": "allow",
+      "ty *": "allow",
+      "git status*": "allow",
+      "git diff*": "allow",
+      "git log*": "allow",
+      "graphify *": "allow",
+      "rm -rf *": "ask",
+      "git reset --hard *": "deny"
+    },
+    "edit": "allow",
+    "read": "allow",
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "task": "allow",
+    "todowrite": "allow",
+    "question": "allow",
+    "skill": "allow",
+    "webfetch": "allow"
 }

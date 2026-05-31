@@ -71,7 +71,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.901.0",
     "@aws-sdk/s3-request-presigner": "3.797.0",
-    "@elastic/elasticsearch": "^9.3.3",
     "@fastify/auth": "^5.0.4",
     "@fastify/caching": "^9.0.3",
     "@fastify/circuit-breaker": "^4.0.2",
@@ -96,6 +95,7 @@
     "@google/genai": "1.21.0",
     "@knocklabs/node": "1.28.0",
     "@neondatabase/serverless": "1.0.2",
+    "@openfga/sdk": "^0.9.6",
     "@opentelemetry/auto-instrumentations-node": "^0.76.0",
     "@opentelemetry/exporter-trace-otlp-http": "^0.218.0",
     "@opentelemetry/sdk-node": "^0.218.0",
