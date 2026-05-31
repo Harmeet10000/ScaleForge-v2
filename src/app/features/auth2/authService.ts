@@ -2,17 +2,20 @@
  * src/app/features/auth2/authService.ts
  *
  * Core auth business logic — no HTTP/Fastify imports.
- * Operations: register, login, refreshTokens, logout.
+ * Operations: register, login, refreshTokens, logout,
+ *             confirmAccount, forgotPassword, resetPassword, changePassword.
  *
- * Depends on: PostgresService (users table), TokenService, PasswordService.
+ * Depends on: PostgresService (users table), TokenService, PasswordService, EmailService.
  */
 
 import { Context, Effect, Layer } from "effect"
-import { eq } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
 import { createId } from "@paralleldrive/cuid2"
+import { randomBytes } from "node:crypto"
 import { PostgresService } from "../../../infra/postgres/postgresService.ts"
 import { TokenService } from "./tokenService.ts"
 import { PasswordService } from "./passwordService.ts"
+import { EmailService } from "../../../infra/email/emailService.ts"
 import { users } from "../../../db/schema/userSchema.ts"
 import {
   UserAlreadyExistsError,
@@ -20,6 +23,11 @@ import {
   InvalidCredentialsError,
   InvalidTokenError,
   TokenExpiredError,
+  AccountAlreadyConfirmedError,
+  InvalidConfirmationCodeError,
+  PasswordResetExpiredError,
+  PasswordSameAsOldError,
+  InvalidOldPasswordError,
 } from "../../../core/errors/authErrors.ts"
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
@@ -28,6 +36,8 @@ export interface RegisterInput {
   readonly name: string
   readonly email: string
   readonly password: string
+  readonly consent?: boolean
+  readonly phoneNumber?: string
 }
 
 export interface LoginInput {
@@ -63,6 +73,19 @@ export interface AuthService {
     InvalidTokenError | TokenExpiredError | UserNotFoundError
   >
   readonly logout: (userId: string) => Effect.Effect<void, never>
+  readonly confirmAccount: (email: string, code: string) => Effect.Effect<
+    void,
+    UserNotFoundError | AccountAlreadyConfirmedError | InvalidConfirmationCodeError
+  >
+  readonly forgotPassword: (email: string) => Effect.Effect<void, never>
+  readonly resetPassword: (token: string, newPassword: string) => Effect.Effect<
+    void,
+    InvalidTokenError | PasswordResetExpiredError
+  >
+  readonly changePassword: (userId: string, oldPassword: string, newPassword: string) => Effect.Effect<
+    void,
+    UserNotFoundError | InvalidOldPasswordError | PasswordSameAsOldError
+  >
 }
 
 export const AuthService = Context.Service<AuthService>("@auth/AuthService")
@@ -73,6 +96,7 @@ const make = Effect.gen(function* () {
   const postgres = yield* PostgresService
   const tokenSvc = yield* TokenService
   const passwordSvc = yield* PasswordService
+  const emailSvc = yield* EmailService
 
   const register = (input: RegisterInput) =>
     Effect.gen(function* () {
@@ -90,7 +114,11 @@ const make = Effect.gen(function* () {
       // 2. Hash password
       const hashedPassword = yield* passwordSvc.hash(input.password)
 
-      // 3. Insert user
+      // 3. Generate confirmation code and token
+      const confirmCode = Math.random().toString(36).slice(2, 8).toUpperCase()
+      const confirmToken = createId()
+
+      // 4. Insert user
       const id = createId()
       yield* postgres.query((db) =>
         db.insert(users).values({
@@ -99,8 +127,23 @@ const make = Effect.gen(function* () {
           emailAddress: input.email,
           password: hashedPassword,
           role: "user",
+          ...(input.consent !== undefined ? { consent: input.consent } : {}),
+          ...(input.phoneNumber !== undefined ? { phoneNumber: input.phoneNumber } : {}),
+          accountConfirmation: {
+            status: false,
+            token: confirmToken,
+            code: confirmCode,
+            timestamp: new Date().toISOString(),
+          },
         })
       ).pipe(Effect.orDie)
+
+      // 5. Fire-and-forget confirmation email
+      yield* emailSvc.send({
+        to: [input.email],
+        subject: "Confirm Your Account",
+        html: `<p>Your confirmation code is: <strong>${confirmCode}</strong></p>`,
+      }).pipe(Effect.ignore)
 
       return { id, name: input.name, email: input.email, role: "user" } satisfies UserProfile
     })
@@ -168,7 +211,131 @@ const make = Effect.gen(function* () {
   // Phase 6 will add a token denylist backed by Redis.
   const logout = (_userId: string) => Effect.void
 
-  return AuthService.of({ register, login, refreshTokens, logout })
+  const confirmAccount = (email: string, code: string) =>
+    Effect.gen(function* () {
+      const rows = yield* postgres.query((db) =>
+        db.select({ id: users.id, accountConfirmation: users.accountConfirmation })
+          .from(users)
+          .where(eq(users.emailAddress, email))
+          .limit(1)
+      ).pipe(Effect.orDie)
+
+      const user = rows[0]
+      if (!user) return yield* Effect.fail(new UserNotFoundError({ identifier: email }))
+
+      const conf = user.accountConfirmation as import("../../../db/schema/userSchema.ts").AccountConfirmation | null
+      if (conf?.status === true) {
+        return yield* Effect.fail(new AccountAlreadyConfirmedError({ email }))
+      }
+      if (!conf?.code || conf.code !== code) {
+        return yield* Effect.fail(new InvalidConfirmationCodeError())
+      }
+
+      yield* postgres.query((db) =>
+        db.update(users)
+          .set({
+            isVerified: true,
+            accountConfirmation: {
+              status: true,
+              token: null,
+              code: null,
+              timestamp: new Date().toISOString(),
+            },
+          })
+          .where(eq(users.id, user.id))
+      ).pipe(Effect.orDie)
+    })
+
+  const forgotPassword = (email: string) =>
+    Effect.gen(function* () {
+      const rows = yield* postgres.query((db) =>
+        db.select({ id: users.id, name: users.name })
+          .from(users)
+          .where(eq(users.emailAddress, email))
+          .limit(1)
+      ).pipe(Effect.orDie)
+
+      const user = rows[0]
+      if (!user) return  // Silent — prevents email enumeration
+
+      const token = randomBytes(32).toString("hex")
+      const expiry = Date.now() + 60 * 60 * 1000  // 1 hour
+
+      yield* postgres.query((db) =>
+        db.update(users)
+          .set({ passwordReset: { token, expiry, lastResetAt: null } })
+          .where(eq(users.id, user.id))
+      ).pipe(Effect.orDie)
+
+      const resetUrl = `${process.env["FRONTEND_URL"] ?? "http://localhost:3000"}/reset-password?token=${token}`
+      yield* emailSvc.send({
+        to: [email],
+        subject: "Reset Your Password",
+        html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. Expires in 1 hour.</p>`,
+      }).pipe(Effect.ignore)
+    })
+
+  const resetPassword = (token: string, newPassword: string) =>
+    Effect.gen(function* () {
+      const rows = yield* postgres.query((db) =>
+        db.select({ id: users.id, passwordReset: users.passwordReset })
+          .from(users)
+          .where(sql`password_reset->>'token' = ${token}`)
+          .limit(1)
+      ).pipe(Effect.orDie)
+
+      const user = rows[0]
+      if (!user) return yield* Effect.fail(new InvalidTokenError({ reason: "reset token not found" }))
+
+      const pr = user.passwordReset as import("../../../db/schema/userSchema.ts").PasswordReset | null
+      if (!pr?.expiry || Date.now() > pr.expiry) {
+        return yield* Effect.fail(new PasswordResetExpiredError())
+      }
+
+      const hashedPassword = yield* passwordSvc.hash(newPassword)
+
+      yield* postgres.query((db) =>
+        db.update(users)
+          .set({
+            password: hashedPassword,
+            passwordReset: { token: null, expiry: null, lastResetAt: new Date().toISOString() },
+          })
+          .where(eq(users.id, user.id))
+      ).pipe(Effect.orDie)
+    })
+
+  const changePassword = (userId: string, oldPassword: string, newPassword: string) =>
+    Effect.gen(function* () {
+      const rows = yield* postgres.query((db) =>
+        db.select({ id: users.id, password: users.password })
+          .from(users)
+          .where(eq(users.id, userId))
+          .limit(1)
+      ).pipe(Effect.orDie)
+
+      const user = rows[0]
+      if (!user) return yield* Effect.fail(new UserNotFoundError({ identifier: userId }))
+
+      yield* passwordSvc.verify(user.password, oldPassword).pipe(
+        Effect.mapError(() => new InvalidOldPasswordError())
+      )
+
+      const isSame = yield* passwordSvc.verify(user.password, newPassword).pipe(
+        Effect.map(() => true),
+        Effect.orElseSucceed(() => false),
+      )
+      if (isSame) return yield* Effect.fail(new PasswordSameAsOldError())
+
+      const hashed = yield* passwordSvc.hash(newPassword)
+      yield* postgres.query((db) =>
+        db.update(users).set({ password: hashed }).where(eq(users.id, user.id))
+      ).pipe(Effect.orDie)
+    })
+
+  return AuthService.of({
+    register, login, refreshTokens, logout,
+    confirmAccount, forgotPassword, resetPassword, changePassword,
+  })
 })
 
 export const AuthServiceLive = Layer.effect(

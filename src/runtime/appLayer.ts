@@ -51,6 +51,7 @@ const AuthLayer = AuthServiceLive.pipe(
     PostgresServiceLive.pipe(Layer.provide(AppConfigLive)),
     TokenLayer,
     PwLayer,
+    EmailServiceLive.pipe(Layer.provide(AppConfigLive)),
   ))
 )
 
