@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Redacted } from "effect"
 import { Resend } from "resend"
 import { AppConfig } from "../../core/config/configService.ts"
 import { EmailSendError } from "../../core/errors/infraErrors.ts"
+import { resendLimiter } from "../rateLimit/outboundRateLimiter.ts"
 
 export interface EmailSendParams {
   readonly to: readonly string[]
@@ -24,12 +25,14 @@ const make = Effect.gen(function* () {
     send: (params) =>
       Effect.tryPromise({
         try: () =>
-          resend.emails.send({
-            from: params.from ?? "noreply@scaleforge.dev",
-            to: [...params.to],
-            subject: params.subject,
-            html: params.html,
-          }),
+          resendLimiter.schedule(() =>
+            resend.emails.send({
+              from: params.from ?? "noreply@scaleforge.dev",
+              to: [...params.to],
+              subject: params.subject,
+              html: params.html,
+            })
+          ),
         catch: (error) =>
           new EmailSendError({ to: params.to, subject: params.subject, cause: error }),
       }).pipe(Effect.asVoid),
