@@ -2,6 +2,7 @@ import { Context, Effect, Layer, Schedule } from "effect"
 import amqplib, { type Connection, type Channel } from "amqplib"
 import { AppConfig } from "../../core/config/configService.ts"
 import { RabbitMQConnectionError, RabbitMQPublishError } from "../../core/errors/infraErrors.ts"
+import { encode } from "./messageCodec.ts"
 
 export interface RabbitMQService {
   readonly publish: (
@@ -58,8 +59,11 @@ const make = Effect.gen(function* () {
     publish: (exchange, routingKey, message) =>
       Effect.tryPromise({
         try: async () => {
-          const payload = Buffer.from(JSON.stringify(message))
-          const ok = channel.publish(exchange, routingKey, payload, { persistent: true })
+          const payload = encode(message)
+          const ok = channel.publish(exchange, routingKey, payload, {
+            persistent: true,
+            contentType: "application/x-msgpack",
+          })
           if (!ok) throw new Error("Channel write buffer full")
         },
         catch: (error) => new RabbitMQPublishError({ exchange, routingKey, cause: error }),

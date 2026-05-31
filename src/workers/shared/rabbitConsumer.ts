@@ -18,6 +18,7 @@ import type { Channel, ConsumeMessage, Connection } from "amqplib"
 import amqplib from "amqplib"
 import { AppConfig } from "../../core/config/configService.ts"
 import { RabbitMQConnectionError } from "../../core/errors/infraErrors.ts"
+import { decodeAuto } from "../../infra/rabbitmq/messageCodec.ts"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -109,7 +110,7 @@ const make = Effect.gen(function* () {
                 if (msg === null) return // consumer cancelled by broker
                 let body: unknown
                 try {
-                  body = JSON.parse(msg.content.toString("utf8"))
+                  body = decodeAuto<unknown>(msg.content)
                 } catch {
                   body = msg.content.toString("utf8")
                 }
