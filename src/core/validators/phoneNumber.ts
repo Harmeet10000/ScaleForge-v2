@@ -8,8 +8,7 @@
  *   - Registration flow if phone is collected
  *
  * Effect Schema integration:
- *   Schema.String.check(isValidPhoneNumber)
- *   Schema.String.pipe(Schema.transformOrFail(parsePhoneNumber, ...))
+ *   Schema.String.check(phoneNumberCheck)
  */
 
 import { parsePhoneNumberFromString, isValidPhoneNumber, getCountries } from "libphonenumber-js"
@@ -64,34 +63,15 @@ export const supportedCountries = (): CountryCode[] => getCountries()
  * Usage:
  *   const PhoneField = Schema.String.check(phoneNumberCheck)
  */
-export const phoneNumberCheck = Schema.check<string>((s, ast, ctx) => {
-  if (!isValid(s)) {
-    return ctx.fail(ast, s, "Invalid phone number. Use E.164 format (e.g. +14155551234)")
-  }
-  return ctx.succeed(s)
-})
+export const phoneNumberCheck = Schema.makeFilter(
+  (s: string) => isValid(s) || "Invalid phone number. Use E.164 format (e.g. +14155551234)",
+)
 
 /**
- * Full phone number Schema — validates AND normalizes to E.164 format.
+ * Validated phone number Schema — validates E.164 format.
+ * Normalization to E.164 is performed at the service layer via parse().
  *
  * Usage:
  *   const PhoneField = E164PhoneNumber
- *   // "+1 415 555 1234" → "+14155551234"
  */
-export const E164PhoneNumber = Schema.String.pipe(
-  Schema.transformOrFail(
-    Schema.String,
-    {
-      decode: (s, _, ast) => {
-        const parsed = parse(s)
-        if (!parsed) {
-          return Schema.ParseResult.fail(
-            new Schema.ParseResult.Type(ast, s, "Invalid phone number")
-          )
-        }
-        return Schema.ParseResult.succeed(parsed.e164)
-      },
-      encode: Schema.ParseResult.succeed,
-    }
-  )
-)
+export const E164PhoneNumber = Schema.String.check(phoneNumberCheck)

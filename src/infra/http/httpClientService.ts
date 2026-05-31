@@ -22,7 +22,7 @@
 
 import { Context, Effect, Layer, Data } from "effect"
 import { fetch, Agent } from "undici"
-import type { Dispatcher } from "undici"
+import type { Dispatcher, Response } from "undici"
 
 // ── Errors ───────────────────────────────────────────────────────────────────
 
@@ -70,8 +70,8 @@ export interface HttpClientService {
   readonly request: (
     method: string,
     url: string,
-    opts?: RequestOptions,
-  ) => Effect.Effect<{ status: number; headers: Headers; text: () => Promise<string> }, HttpRequestError>
+    opts?: RequestOptions | undefined,
+  ) => Effect.Effect<Response, HttpRequestError>
 }
 
 export const HttpClientService = Context.Service<HttpClientService>("@infra/HttpClientService")
@@ -122,9 +122,8 @@ const make = Effect.sync(() => {
       const response = await fetch(url, {
         method,
         headers: makeHeaders(opts.headers),
-        body,
+        ...(body !== undefined ? { body } : {}),
         signal: controller.signal,
-        // @ts-expect-error — undici fetch accepts dispatcher; Node types differ
         dispatcher,
       })
       return response
@@ -163,7 +162,7 @@ const make = Effect.sync(() => {
       },
     })
 
-  const request = (method: string, url: string, opts?: RequestOptions) =>
+  const request = (method: string, url: string, opts?: RequestOptions | undefined): Effect.Effect<Response, HttpRequestError> =>
     Effect.tryPromise({
       try: () => doFetch(method, url, opts),
       catch: (e) => new HttpRequestError({ url, method, cause: e }),

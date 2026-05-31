@@ -57,7 +57,7 @@ export const registerDedup = <V>(
   }, fn)
 
   // Return a typed callable that looks up the registered function
-  return (key: string) => (globalDeduplicator as Record<string, (k: string) => Promise<V>>)[name]!(key)
+  return (key: string) => (globalDeduplicator as unknown as Record<string, (k: string) => Promise<V>>)[name]!(key)
 }
 
 // ── Pre-registered deduplicators ──────────────────────────────────────────────

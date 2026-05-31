@@ -80,21 +80,21 @@ export const createCache = <K extends {}, V extends {}>(
 // Each cache is explicitly sized and TTL'd per AGENTS.md rules.
 
 /** Short-lived user profile cache — avoids repeated DB lookups within a request burst */
-export const userProfileCache = createCache<string, unknown>({
+export const userProfileCache = createCache<string, object>({
   name: "user-profiles",
   max: 1_000,
   ttlMs: 60_000,        // 1 min
 })
 
 /** API key → user mapping (high read, low write) */
-export const apiKeyCache = createCache<string, unknown>({
+export const apiKeyCache = createCache<string, object>({
   name: "api-keys",
   max: 2_000,
   ttlMs: 5 * 60_000,    // 5 min
 })
 
 /** Webhook subscription lookup (by owner userId) */
-export const webhookSubCache = createCache<string, unknown>({
+export const webhookSubCache = createCache<string, object>({
   name: "webhook-subs",
   max: 500,
   ttlMs: 2 * 60_000,    // 2 min

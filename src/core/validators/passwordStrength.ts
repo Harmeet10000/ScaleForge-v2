@@ -77,20 +77,16 @@ export const isStrongEnough = (password: string, userInputs: string[] = []): boo
  *     .check(Schema.isMinLength(8))
  *     .check(passwordStrengthCheck)
  */
-export const passwordStrengthCheck = Schema.check<string>((s, ast, ctx) => {
+export const passwordStrengthCheck = Schema.makeFilter((s: string) => {
   const result = zxcvbn(s)
   if (result.score < MIN_PASSWORD_SCORE) {
     const warning = result.feedback.warning
       ? ` ${result.feedback.warning}.`
       : ""
     const tip = result.feedback.suggestions[0] ?? "Try a longer passphrase."
-    return ctx.fail(
-      ast,
-      s,
-      `Password is too weak (score ${result.score}/${MIN_PASSWORD_SCORE} minimum).${warning} ${tip}`
-    )
+    return `Password is too weak (score ${result.score}/${MIN_PASSWORD_SCORE} minimum).${warning} ${tip}`
   }
-  return ctx.succeed(s)
+  return true
 })
 
 /**

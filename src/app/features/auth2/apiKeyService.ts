@@ -182,13 +182,18 @@ const make = Effect.gen(function* () {
       }
 
       // 2. argon2 verify against each candidate (almost always 1)
-      let matchedRow: (typeof rows)[0] | null = null
-      for (const row of rows) {
-        const valid = yield* Effect.promise(() =>
-          argon2.verify(row.keyHash, rawKey, ARGON2_OPTIONS)
-        )
-        if (valid) { matchedRow = row; break }
-      }
+      // NOTE: Effect.gen + for..of + yield* breaks TypeScript type inference — the
+      // entire verification is done inside Effect.promise to avoid this limitation.
+      const matchedRow = yield* Effect.tryPromise({
+        try: async () => {
+          for (const row of rows) {
+            const valid = await argon2.verify(row.keyHash, rawKey, ARGON2_OPTIONS)
+            if (valid) return row
+          }
+          return null as (typeof rows)[0] | null
+        },
+        catch: () => new ApiKeyNotFoundError({ prefix }),
+      })
 
       if (!matchedRow) {
         return yield* Effect.fail(new ApiKeyNotFoundError({ prefix }))
@@ -204,8 +209,8 @@ const make = Effect.gen(function* () {
         return yield* Effect.fail(new ApiKeyExpiredError({ keyId: matchedRow.id }))
       }
 
-      // 5. Best-effort async last_used_at update (fire-and-forget)
-      Effect.runFork(
+      // 5. Best-effort async last_used_at update (fire-and-forget daemon fiber)
+      yield* Effect.forkDetach(
         postgres.query((db) =>
           db.update(apiKeys)
             .set({ lastUsedAt: new Date() })

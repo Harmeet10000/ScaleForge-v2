@@ -11,7 +11,7 @@
  *   Schema.String.check(timezoneCheck)
  */
 
-import ct from "countries-and-timezones"
+import * as ct from "countries-and-timezones"
 import { Schema } from "effect"
 
 // ── Raw helpers ───────────────────────────────────────────────────────────────
@@ -61,25 +61,24 @@ export const utcOffsetMinutes = (tz: string): number | null => {
  * Usage:
  *   const TimezoneField = Schema.String.check(timezoneCheck)
  */
-export const timezoneCheck = Schema.check<string>((s, ast, ctx) => {
-  if (!isValidTimezone(s)) {
-    return ctx.fail(ast, s, `Invalid timezone: "${s}". Use an IANA timezone identifier (e.g. "America/New_York")`)
-  }
-  return ctx.succeed(s)
-})
+export const timezoneCheck = Schema.makeFilter(
+  (s: string) =>
+    isValidTimezone(s) ||
+    `Invalid timezone: "${s}". Use an IANA timezone identifier (e.g. "America/New_York")`,
+)
 
 /**
  * Schema check: validates that a string is a valid ISO 3166-1 alpha-2 country code.
+ * Note: normalizes to uppercase before validation; the decoded value is uppercase.
  *
  * Usage:
  *   const CountryField = Schema.String.check(countryCodeCheck)
  */
-export const countryCodeCheck = Schema.check<string>((s, ast, ctx) => {
-  if (!isValidCountryCode(s.toUpperCase())) {
-    return ctx.fail(ast, s, `Invalid country code: "${s}". Use ISO 3166-1 alpha-2 (e.g. "US", "IN")`)
-  }
-  return ctx.succeed(s.toUpperCase())
-})
+export const countryCodeCheck = Schema.makeFilter(
+  (s: string) =>
+    isValidCountryCode(s.toUpperCase()) ||
+    `Invalid country code: "${s}". Use ISO 3166-1 alpha-2 (e.g. "US", "IN")`,
+)
 
 /** Branded Schema type for valid IANA timezones */
 export const IanaTimezone = Schema.String.check(timezoneCheck)

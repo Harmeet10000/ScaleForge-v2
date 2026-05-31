@@ -21,6 +21,7 @@ import { TokenServiceLive } from "../app/features/auth2/tokenService.ts"
 import { PasswordServiceLive } from "../app/features/auth2/passwordService.ts"
 import { AuthServiceLive } from "../app/features/auth2/authService.ts"
 import { ApiKeyServiceLive } from "../app/features/auth2/apiKeyService.ts"
+import { LeaderboardServiceLive } from "../app/features/leaderboard/leaderboardService.ts"
 
 // ── Infra layer ───────────────────────────────────────────────────────────────
 // All infra services get AppConfig provided once at this boundary.
@@ -58,6 +59,14 @@ const ApiKeyLayer = ApiKeyServiceLive.pipe(
   ))
 )
 
+// LeaderboardService needs Postgres + Redis
+const LeaderboardLayer = LeaderboardServiceLive.pipe(
+  Layer.provide(Layer.mergeAll(
+    PostgresServiceLive.pipe(Layer.provide(AppConfigLive)),
+    RedisServiceLive.pipe(Layer.provide(AppConfigLive)),
+  ))
+)
+
 // ── Logger layer ──────────────────────────────────────────────────────────────
 const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
 
@@ -68,5 +77,6 @@ export const AppLayer = Layer.mergeAll(
   PwLayer,
   AuthLayer,
   ApiKeyLayer,
+  LeaderboardLayer,
   LoggerLayer,
 )

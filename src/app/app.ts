@@ -14,6 +14,7 @@ import requestContextPlugin from "@fastify/request-context"
 import formbody from "@fastify/formbody"
 import responseValidation from "@fastify/response-validation"
 import fastifyOtel from "@fastify/otel"
+import fastifyWebsocket from "@fastify/websocket"
 import swagger from "@fastify/swagger"
 import swaggerUi from "@fastify/swagger-ui"
 import fastifyBridgePlugin from "../runtime/fastifyBridge.ts"
@@ -24,6 +25,7 @@ import { healthRoutes } from "./features/health/healthRoutes.ts"
 import { adminFeatureFlagRoutes } from "./features/admin/featureFlagRoutes.ts"
 import { webhookRoutes } from "./features/webhooks/webhookRoutes.ts"
 import { authRoutes } from "./features/auth2/authRoutes.ts"
+import { leaderboardRoutes } from "./features/leaderboard/leaderboardRoutes.ts"
 
 export const buildApp = async () => {
   const fastify = Fastify({
@@ -77,12 +79,17 @@ export const buildApp = async () => {
   //     Fastify-native spans with route-level granularity.
   await fastify.register(fastifyOtel, { wrapRoutes: true })
 
-  // 11. Response validation (dev/staging only) — catches response contract drift
+  // 11. WebSocket support (@fastify/websocket v11)
+  //     Must be registered before any { websocket: true } routes.
+  //     fastify.websocketServer.clients provides the connected client Set.
+  await fastify.register(fastifyWebsocket)
+
+  // 12. Response validation (dev/staging only) — catches response contract drift
   if (process.env["NODE_ENV"] !== "production") {
     await fastify.register(responseValidation, { ajv: { coerceTypes: false } })
   }
 
-  // 12. OpenAPI / Swagger
+  // 12. OpenAPI / Swagger (renumbered after WS plugin)
   await fastify.register(swagger, {
     openapi: {
       info: { title: "ScaleForge API", version: "1.0.0", description: "Production-grade API" },
@@ -105,6 +112,7 @@ export const buildApp = async () => {
     await api.register(authRoutes)
     await api.register(adminFeatureFlagRoutes)
     await api.register(webhookRoutes)
+    await api.register(leaderboardRoutes)
   }, { prefix: "/api/v1" })
 
   // 404 fallback

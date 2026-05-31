@@ -45,7 +45,7 @@ export const createRateLimiter = (opts: RateLimiterOptions): Bottleneck =>
     strategy: opts.maxQueueSize !== undefined
       ? Bottleneck.strategy.OVERFLOW  // drop new requests when queue is full
       : Bottleneck.strategy.LEAK,     // default — process all queued items
-    id: opts.id,
+    ...(opts.id !== undefined ? { id: opts.id } : {}),
   })
 
 // ── Pre-built limiters per external service ───────────────────────────────────
@@ -110,8 +110,8 @@ export const elasticLimiter = createRateLimiter({
 export type LimiterStats = {
   readonly id: string
   readonly queued: number
-  readonly running: number
-  readonly done: number
+  readonly running: Promise<number>
+  readonly done: Promise<number>
 }
 
 export const getLimiterStats = (id: string, limiter: Bottleneck): LimiterStats => ({
