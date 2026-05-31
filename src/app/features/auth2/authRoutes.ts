@@ -56,7 +56,7 @@ const LoginBody = Schema.Struct({
 })
 
 const RefreshBody = Schema.Struct({
-  refreshToken: Schema.optional(Schema.NonEmptyString),
+  refreshToken: Schema.optionalKey(Schema.NonEmptyString),
 })
 
 // ── Decode helpers ────────────────────────────────────────────────────────────

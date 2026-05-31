@@ -8,9 +8,9 @@ const CreateWebhookBody = Schema.Struct({
 })
 
 const UpdateWebhookBody = Schema.Struct({
-  url: Schema.optional(Schema.String.pipe(Schema.pattern(/^https:\/\/.+/))),
-  events: Schema.optional(Schema.Array(Schema.String).pipe(Schema.minItems(1))),
-  enabled: Schema.optional(Schema.Boolean),
+  url: Schema.optionalKey(Schema.String.pipe(Schema.pattern(/^https:\/\/.+/))),
+  events: Schema.optionalKey(Schema.Array(Schema.String).pipe(Schema.minItems(1))),
+  enabled: Schema.optionalKey(Schema.Boolean),
 })
 
 // Routes: all require authenticated user (PASETO middleware applied at app level)

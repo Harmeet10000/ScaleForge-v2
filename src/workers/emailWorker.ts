@@ -29,7 +29,7 @@ const EmailJobSchema = Schema.Struct({
   to: Schema.Array(Schema.String.check(Schema.nonEmpty())),
   subject: Schema.String.check(Schema.nonEmpty()),
   html: Schema.String.check(Schema.nonEmpty()),
-  from: Schema.optional(Schema.String),
+  from: Schema.optionalKey(Schema.String),
   attempt: Schema.Number.pipe(Schema.int(), Schema.between(0, 5)),
 })
 

@@ -36,8 +36,8 @@ const LeaderboardScoreMessage = Schema.Struct({
   userId: Schema.String.check(Schema.isNonEmpty()),
   delta: Schema.Int,
   entityType: Schema.String.check(Schema.isNonEmpty()),
-  entityId: Schema.optional(Schema.String),
-  metadata: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  entityId: Schema.optionalKey(Schema.String),
+  metadata: Schema.optionalKey(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
 })
 
 type LeaderboardScoreMessage = Schema.Schema.Type<typeof LeaderboardScoreMessage>
