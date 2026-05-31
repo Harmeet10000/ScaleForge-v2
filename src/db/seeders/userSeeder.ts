@@ -1,49 +1,61 @@
-import { getDB } from '../../connections/connectPostgres';
-import { users } from '../schema/userSchema';
-import { logger } from '../../utils/logger';
-import bcrypt from 'bcryptjs';
-import { eq } from 'drizzle-orm';
+/**
+ * src/db/seeders/userSeeder.ts
+ *
+ * Seeds initial users into the database using a direct Neon connection.
+ */
+import { neon } from "@neondatabase/serverless"
+import { drizzle } from "drizzle-orm/neon-http"
+import bcrypt from "bcryptjs"
+import { eq } from "drizzle-orm"
+import { users } from "../schema/userSchema.ts"
 
-export const seedUsers = async () => {
-  try {
-    const db = getDB();
+const getDatabaseUrl = (): string => {
+  const url = process.env["POSTGRES_DATABASE_URL"]
+  if (!url) throw new Error("POSTGRES_DATABASE_URL env var is not set")
+  return url
+}
 
-    logger.info('Seeding users...');
+export const seedUsers = async (): Promise<void> => {
+  const db = drizzle(neon(getDatabaseUrl()))
 
-    // Check if admin user already exists
-    const existingAdmin = await db
-      .select()
-      .from(users)
-      .where(eq(users.emailAddress, 'admin@example.com'))
-      .limit(1);
+  console.log("[seeder] Seeding users...")
 
-    if (existingAdmin.length > 0) {
-      logger.info('Admin user already exists, skipping user seeding');
-      return;
-    }
+  // Check if admin user already exists
+  const existingAdmin = await db
+    .select()
+    .from(users)
+    .where(eq(users.emailAddress, "admin@example.com"))
+    .limit(1)
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash('Admin@123', 12);
+  if (existingAdmin.length > 0) {
+    console.log("[seeder] Admin user already exists, skipping user seeding")
+    return
+  }
 
-    // Create admin user
-    const adminUser = {
-      name: 'System Administrator',
-      emailAddress: 'admin@example.com',
+  // Hash passwords
+  const hashedPassword = await bcrypt.hash("Admin@123", 12)
+
+  // Create admin user
+  const [insertedUser] = await db
+    .insert(users)
+    .values({
+      name: "System Administrator",
+      emailAddress: "admin@example.com",
       password: hashedPassword,
-      role: 'admin',
+      role: "admin",
       isActive: true,
       isVerified: true,
       accountConfirmation: {
         status: true,
         code: null,
         token: null,
-        timestamp: new Date()
+        timestamp: new Date().toISOString(),
       },
       profile: {
         avatar: null,
-        bio: 'System Administrator',
-        location: 'System',
-        website: null
+        bio: "System Administrator",
+        location: "System",
+        website: null,
       },
       security: {
         twoFactorEnabled: false,
@@ -51,52 +63,33 @@ export const seedUsers = async () => {
         loginAttempts: 0,
         lockUntil: null,
         lastLogin: null,
-        ipWhitelist: []
+        ipWhitelist: [],
       },
       preferences: {
-        language: 'en',
-        timezone: 'UTC',
-        notifications: {
-          email: true,
-          push: true,
-          sms: false
-        }
-      }
-    };
+        language: "en",
+        timezone: "UTC",
+        notifications: { email: true, push: true, sms: false },
+      },
+    })
+    .returning()
 
-    // Insert admin user
-    const [insertedUser] = await db.insert(users).values(adminUser).returning();
+  console.log(`[seeder] Admin user created: ${insertedUser!.id} (${insertedUser!.emailAddress})`)
 
-    logger.info('Admin user created successfully', {
-      meta: { userId: insertedUser.id, email: insertedUser.emailAddress }
-    });
-
-    // Create test user
-    const testUserPassword = await bcrypt.hash('Test@123', 12);
-    const testUser = {
-      name: 'Test User',
-      emailAddress: 'test@example.com',
+  // Create test user
+  const testUserPassword = await bcrypt.hash("Test@123", 12)
+  const [insertedTestUser] = await db
+    .insert(users)
+    .values({
+      name: "Test User",
+      emailAddress: "test@example.com",
       password: testUserPassword,
-      role: 'user',
+      role: "user",
       isActive: true,
       isVerified: true,
-      accountConfirmation: {
-        status: true,
-        code: null,
-        token: null,
-        timestamp: new Date()
-      }
-    };
+      accountConfirmation: { status: true, code: null, token: null, timestamp: new Date().toISOString() },
+    })
+    .returning()
 
-    const [insertedTestUser] = await db.insert(users).values(testUser).returning();
-
-    logger.info('Test user created successfully', {
-      meta: { userId: insertedTestUser.id, email: insertedTestUser.emailAddress }
-    });
-
-    logger.info('User seeding completed');
-  } catch (error) {
-    logger.error('User seeding failed:', { meta: { error: error.message } });
-    throw error;
-  }
-};
+  console.log(`[seeder] Test user created: ${insertedTestUser!.id} (${insertedTestUser!.emailAddress})`)
+  console.log("[seeder] User seeding completed")
+}

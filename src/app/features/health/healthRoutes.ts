@@ -1,8 +1,6 @@
 import type { FastifyInstance } from "fastify"
 import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import { healthCheck } from "./healthService.ts"
-import type { AppError } from "../../../core/errors/httpErrors.ts"
-import { Effect } from "effect"
 
 export const healthRoutes = async (fastify: FastifyInstance) => {
   fastify.get("/health", {
@@ -21,7 +19,7 @@ export const healthRoutes = async (fastify: FastifyInstance) => {
       },
     },
   }, async (req, reply) => {
-    return effectHandler(req, reply, healthCheck as Effect.Effect<{ status: "healthy" | "degraded"; checks: Record<string, string>; timestamp: string }, AppError, never>, {
+    return effectHandler(req, reply, healthCheck, {
       transform: (result, reply) => {
         const code = result.status === "healthy" ? 200 : 503
         void reply.status(code).send(result)

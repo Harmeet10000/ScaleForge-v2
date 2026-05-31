@@ -4,12 +4,12 @@
  * Tests for PASETO v4.public sign/verify — uses a real generated keypair.
  */
 
-import { describe, it, expect, beforeAll } from "bun:test"
-import { Effect, Layer, Redacted } from "effect"
+import { describe, it, expect } from "bun:test"
+import { Cause, Effect, Layer, Redacted, Result } from "effect"
 import { generateKeys } from "paseto-ts/v4"
 import { TokenService, TokenServiceLive } from "../../../src/app/features/auth2/tokenService.ts"
 import { AppConfig } from "../../../src/core/config/configService.ts"
-import { InvalidTokenError, TokenExpiredError } from "../../../src/core/errors/authErrors.ts"
+import { InvalidTokenError } from "../../../src/core/errors/authErrors.ts"
 
 // Generate a real PASERK keypair for tests
 const { secretKey, publicKey } = generateKeys("public")
@@ -41,8 +41,8 @@ const TestAppConfigLayer = Layer.succeed(AppConfig, AppConfig.of({
   email: { resendKey: Redacted.make("") },
   novu: { apiKey: Redacted.make("") },
   observability: { lokiHost: "" },
-  openfga: { apiUrl: "", storeId: "", authorizationModelId: "", clientId: "", clientSecret: "", apiAudience: "", apiTokenIssuer: "" },
-  google: { clientId: Redacted.make(""), clientSecret: Redacted.make("") },
+  openfga: { apiUrl: "", storeId: "", modelId: "", credentialsMethod: "none", apiToken: Redacted.make(""), tokenIssuer: "", apiAudience: "", clientId: "", clientSecret: Redacted.make("") },
+  google: { clientId: "", clientSecret: Redacted.make(""), redirectUri: "" },
   knock: { webhookSecret: Redacted.make("") },
 }))
 
@@ -92,8 +92,11 @@ describe("TokenService", () => {
       )
     )
     expect(exit._tag).toBe("Failure")
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(InvalidTokenError)
+    if (exit._tag === "Failure") {
+      const errResult = Cause.findError(exit.cause)
+      if (Result.isSuccess(errResult)) {
+        expect(errResult.success).toBeInstanceOf(InvalidTokenError)
+      }
     }
   })
 
@@ -110,8 +113,11 @@ describe("TokenService", () => {
       )
     )
     expect(exit._tag).toBe("Failure")
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(InvalidTokenError)
+    if (exit._tag === "Failure") {
+      const errResult = Cause.findError(exit.cause)
+      if (Result.isSuccess(errResult)) {
+        expect(errResult.success).toBeInstanceOf(InvalidTokenError)
+      }
     }
   })
 })

@@ -150,19 +150,17 @@ closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   } else {
     console.log(`[email-worker] received ${signal ?? "close"}, shutting down…`)
   }
-  await Effect.runPromise(runtime.dispose())
+  await runtime.dispose()
 })
 
-Effect.runFork(
-  runtime.runFork(
-    workerProgram.pipe(
-      Effect.scoped,
-      Effect.catchCause((cause) =>
-        Effect.sync(() => {
-          console.error("[email-worker] fatal", cause)
-          process.exit(1)
-        }),
-      ),
+runtime.runFork(
+  workerProgram.pipe(
+    Effect.scoped,
+    Effect.catchCause((cause) =>
+      Effect.sync(() => {
+        console.error("[email-worker] fatal", cause)
+        process.exit(1)
+      }),
     ),
   ),
 )

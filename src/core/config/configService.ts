@@ -74,7 +74,7 @@ export const AppConfig = Context.Service<AppConfig>("@config/AppConfig")
 
 const make = Effect.gen(function* () {
   // Server
-  const port = yield* Config.integer("PORT").pipe(Config.withDefault(3000))
+  const port = yield* Config.number("PORT").pipe(Config.withDefault(3000))
   const nodeEnv = yield* Config.string("NODE_ENV").pipe(Config.withDefault("development"))
   const hostname = yield* Config.string("HOSTNAME").pipe(Config.withDefault("0.0.0.0"))
   const serverId = yield* Config.string("SERVER_ID").pipe(Config.withDefault("unknown"))
@@ -86,14 +86,14 @@ const make = Effect.gen(function* () {
 
   // MongoDB
   const mongoUri = yield* Config.string("DATABASE")
-  const dbPoolSize = yield* Config.integer("DB_POOL_SIZE").pipe(Config.withDefault(10))
+  const dbPoolSize = yield* Config.number("DB_POOL_SIZE").pipe(Config.withDefault(10))
 
   // PostgreSQL (Neon)
   const postgresUrl = yield* Config.string("POSTGRES_DATABASE_URL")
 
   // Redis
   const redisHost = yield* Config.string("REDIS_HOST")
-  const redisPort = yield* Config.integer("REDIS_PORT").pipe(Config.withDefault(6379))
+  const redisPort = yield* Config.number("REDIS_PORT").pipe(Config.withDefault(6379))
   const redisUsername = yield* Config.string("REDIS_USERNAME").pipe(Config.withDefault(""))
   const redisPassword = yield* Config.redacted("REDIS_PASSWORD")
 

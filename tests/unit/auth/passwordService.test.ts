@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "bun:test"
-import { Effect, Layer } from "effect"
+import { Cause, Effect, Result } from "effect"
 import { PasswordService, PasswordServiceLive } from "../../../src/app/features/auth2/passwordService.ts"
 import { InvalidCredentialsError } from "../../../src/core/errors/authErrors.ts"
 
@@ -48,8 +48,11 @@ describe("PasswordService", () => {
       ).pipe(Effect.provide(PasswordServiceLive))
     )
     expect(exit._tag).toBe("Failure")
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error).toBeInstanceOf(InvalidCredentialsError)
+    if (exit._tag === "Failure") {
+      const errResult = Cause.findError(exit.cause)
+      if (Result.isSuccess(errResult)) {
+        expect(errResult.success).toBeInstanceOf(InvalidCredentialsError)
+      }
     }
   })
 })

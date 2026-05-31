@@ -14,7 +14,7 @@
 
 import { Context, Effect, Layer } from "effect"
 import amqplib from "amqplib"
-import type { Channel, Connection } from "amqplib"
+import type { Channel, ChannelModel } from "amqplib"
 import { AppConfig } from "../../core/config/configService.ts"
 import { RabbitMQConnectionError, RabbitMQPublishError } from "../../core/errors/infraErrors.ts"
 
@@ -47,7 +47,7 @@ export const DLQService = Context.Service<DLQService>("@infra/DLQService")
 
 const DLQ_EXCHANGE = "dead.letter"
 
-const openChannel = (url: string): Effect.Effect<{ conn: Connection; ch: Channel }, RabbitMQConnectionError> =>
+const openChannel = (url: string): Effect.Effect<{ conn: ChannelModel; ch: Channel }, RabbitMQConnectionError> =>
   Effect.tryPromise({
     try: async () => {
       const conn = await amqplib.connect(url)
@@ -62,7 +62,7 @@ const make = Effect.gen(function* () {
   const config = yield* AppConfig
 
   // Dedicated connection for DLQ publishing; acquired for the layer lifetime.
-  const { conn, ch } = yield* Effect.acquireRelease(
+  const { ch } = yield* Effect.acquireRelease(
     openChannel(config.rabbitmq.url),
     ({ conn }) =>
       Effect.tryPromise({

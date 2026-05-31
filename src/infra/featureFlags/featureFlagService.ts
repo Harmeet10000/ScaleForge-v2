@@ -47,7 +47,10 @@ const make = Effect.gen(function* () {
 
       cache.set(cacheKey, flag.enabled)
       return flag.enabled
-    })
+    }).pipe(
+      // Treat DB errors as "flag disabled" — safe default for feature gates
+      Effect.match({ onSuccess: (v) => v, onFailure: () => false }),
+    )
 
   const invalidate = (key: string) =>
     Effect.sync(() => {

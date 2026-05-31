@@ -27,7 +27,8 @@ const RabbitMQLayer = RabbitMQServiceLive.pipe(Layer.provide(AppConfigLive))
 const EmailLayer = EmailServiceLive.pipe(Layer.provide(AppConfigLive))
 const MetricsLayer = MetricsServiceLive
 const TracingLayer = TracingServiceLive.pipe(Layer.provide(AppConfigLive))
-const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
+// PinoLoggerLayer reads LOG_LEVEL/NODE_ENV from process.env — no AppConfig needed
+const LoggerLayer = PinoLoggerLayer
 
 // WebhookPublisher needs both Postgres and RabbitMQ (already provided via AppConfig)
 const WebhookPublisherLayer = WebhookPublisherLive.pipe(

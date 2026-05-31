@@ -16,28 +16,28 @@ import { afterAll, afterEach, beforeAll, test } from "bun:test";
  */
 beforeAll(() => {
   // Set test environment
-  process.env.NODE_ENV = "test";
-  process.env.LOG_LEVEL = "error";
+  process.env["NODE_ENV"] = "test";
+  process.env["LOG_LEVEL"] = "error";
 
   // Default service URLs for local testing
-  if (!process.env.DATABASE) {
-    process.env.DATABASE = "mongodb://localhost:27017/auth_test";
+  if (!process.env["DATABASE"]) {
+    process.env["DATABASE"] = "mongodb://localhost:27017/auth_test";
   }
-  if (!process.env.REDIS_HOST) {
-    process.env.REDIS_HOST = "localhost";
+  if (!process.env["REDIS_HOST"]) {
+    process.env["REDIS_HOST"] = "localhost";
   }
-  if (!process.env.REDIS_PORT) {
-    process.env.REDIS_PORT = "6379";
+  if (!process.env["REDIS_PORT"]) {
+    process.env["REDIS_PORT"] = "6379";
   }
-  if (!process.env.RABBITMQ_URL) {
-    process.env.RABBITMQ_URL = "amqp://guest:guest@localhost:5672";
+  if (!process.env["RABBITMQ_URL"]) {
+    process.env["RABBITMQ_URL"] = "amqp://guest:guest@localhost:5672";
   }
 
   console.log("[TEST SETUP] Environment configured:", {
-    DATABASE: process.env.DATABASE,
-    LOG_LEVEL: process.env.LOG_LEVEL,
-    NODE_ENV: process.env.NODE_ENV,
-    REDIS_HOST: process.env.REDIS_HOST,
+    DATABASE: process.env["DATABASE"],
+    LOG_LEVEL: process.env["LOG_LEVEL"],
+    NODE_ENV: process.env["NODE_ENV"],
+    REDIS_HOST: process.env["REDIS_HOST"],
   });
 });
 

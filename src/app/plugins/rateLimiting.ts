@@ -1,5 +1,5 @@
 import fp from "fastify-plugin"
-import type { FastifyInstance } from "fastify"
+import type { FastifyInstance, FastifyRequest } from "fastify"
 import rateLimit from "@fastify/rate-limit"
 import { Redis } from "ioredis"
 
@@ -32,7 +32,7 @@ export const rateLimitPlugin = fp(async (fastify: FastifyInstance) => {
     max: 100,
     timeWindow: "15 minutes",
     redis: redisClient,           // Distributed rate limiting across all instances
-    keyGenerator: (req) =>
+    keyGenerator: (req: FastifyRequest) =>
       (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0]?.trim()
         ?? req.ip,
     errorResponseBuilder: (_req, context) => ({
@@ -42,7 +42,7 @@ export const rateLimitPlugin = fp(async (fastify: FastifyInstance) => {
       data: null,
     }),
     // Skip rate limiting for /metrics (internal scrape endpoint)
-    skip: (req) => req.url === "/metrics",
+    allowList: (req: FastifyRequest) => req.url === "/metrics",
   })
 
   // Clean up the dedicated client when Fastify closes

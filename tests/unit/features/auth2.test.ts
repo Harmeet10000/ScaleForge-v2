@@ -19,9 +19,7 @@ import {
   InvalidConfirmationCodeError,
   PasswordResetExpiredError,
   PasswordSameAsOldError,
-  InvalidCredentialsError,
 } from "../../../src/core/errors/authErrors.ts"
-import { PostgresQueryError } from "../../../src/core/errors/infraErrors.ts"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -63,15 +61,6 @@ const stubPasswordAlwaysValid = Layer.succeed(
   }),
 )
 
-/** PasswordService stub where verify always fails (invalid credentials) */
-const stubPasswordAlwaysInvalid = Layer.succeed(
-  PasswordService,
-  PasswordService.of({
-    hash: (_plaintext) => Effect.succeed("hashed"),
-    verify: (_hash, _plaintext) => Effect.fail(new InvalidCredentialsError()),
-  }),
-)
-
 const buildLayer = (
   dbLayer: Layer.Layer<PostgresService>,
   passwordLayer: Layer.Layer<PasswordService> = stubPasswordAlwaysValid,
@@ -79,11 +68,6 @@ const buildLayer = (
   AuthServiceLive.pipe(
     Layer.provide(Layer.mergeAll(dbLayer, stubToken, passwordLayer, stubEmail)),
   )
-
-const run = <A, E>(
-  effect: Effect.Effect<A, E, AuthService>,
-  layer: Layer.Layer<AuthService>,
-) => Effect.runPromise(Effect.provide(effect, layer))
 
 const runExit = <A, E>(
   effect: Effect.Effect<A, E, AuthService>,

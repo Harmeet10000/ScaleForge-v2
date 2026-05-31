@@ -19,9 +19,8 @@
  */
 
 import type { FastifyPluginAsync } from "fastify"
-import { Effect, Redacted } from "effect"
+import { Effect } from "effect"
 import { createHmac, timingSafeEqual } from "node:crypto"
-import { AppConfig } from "../../../core/config/configService.ts"
 import { WebhookPublisher } from "../../../infra/webhooks/webhookPublisher.ts"
 
 // ── Knock → ScaleForge domain event mapping ────────────────────────────────────
@@ -53,20 +52,15 @@ export const knockBridgeRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.status(401).send({ ok: false, message: "Missing X-Knock-Signature header" })
       }
 
-      // Fetch the webhook secret from Effect config layer
-      const secretResult = await request.server.effectRuntime.runPromiseExit(
-        Effect.flatMap(AppConfig, (cfg) => Effect.succeed(Redacted.value(cfg.knock.webhookSecret))),
-      )
-
-      if (secretResult._tag === "Failure" || !secretResult.value) {
+      // Read webhook secret directly from env — AppConfig is not exposed in the runtime type surface
+      const secret = process.env["KNOCK_WEBHOOK_SECRET"]
+      if (!secret) {
         request.log.warn("[knock-bridge] KNOCK_WEBHOOK_SECRET not configured — rejecting request")
         return reply.status(401).send({ ok: false, message: "Webhook verification not configured" })
       }
-
-      const secret = secretResult.value
       const rawBody = (request as unknown as { rawBody?: Buffer }).rawBody
 
-      if (!rawBody || !secret) {
+      if (!rawBody) {
         return reply.status(400).send({ ok: false, message: "Raw body unavailable for signature verification" })
       }
 

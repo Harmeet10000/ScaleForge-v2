@@ -1,37 +1,30 @@
-import { seedUsers } from './userSeeder';
-import { seedAuditEntries } from './auditSeeder';
-import { logger } from '../../utils/logger';
-import { connectPostgres } from '../../connections/connectPostgres';
-import asyncHandler from 'express-async-handler';
+/**
+ * src/db/seeders/index.ts
+ *
+ * Runs all database seeders in order.
+ * Can be executed directly: `node --experimental-strip-types src/db/seeders/index.ts`
+ */
+import { seedUsers } from "./userSeeder.ts"
+import { seedAuditEntries } from "./auditSeeder.ts"
 
-export const runSeeders = asyncHandler(async () => {
-  try {
-    // Ensure database connection
-    await connectPostgres();
+export const runSeeders = async (): Promise<void> => {
+  console.log("[seeder] Starting database seeding...")
 
-    logger.info('Starting database seeding...');
+  await seedUsers()
+  await seedAuditEntries()
 
-    // Run seeders in order
-    await seedUsers();
-    await seedAuditEntries();
-
-    logger.info('Database seeding completed successfully');
-    return true;
-  } catch (error) {
-    logger.error('Seeding failed:', { meta: { error: error.message } });
-    throw error;
-  }
-});
+  console.log("[seeder] Database seeding completed successfully")
+}
 
 // Run seeders if this file is executed directly
 if (process.argv[1] === new URL(import.meta.url).pathname) {
   runSeeders()
     .then(() => {
-      logger.info('Seeding script completed');
-      process.exit(0);
+      console.log("[seeder] Seeding script completed")
+      process.exit(0)
     })
-    .catch((error) => {
-      logger.error('Seeding script failed:', { meta: { error: error.message } });
-      process.exit(1);
-    });
+    .catch((error: unknown) => {
+      console.error("[seeder] Seeding script failed:", error)
+      process.exit(1)
+    })
 }

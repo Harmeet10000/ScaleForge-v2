@@ -29,7 +29,7 @@ export default defineConfig({
   // - node: Node.js best practices & APIs
   // - regexp: Regular expression safety
   // - oxc: Core Oxlint rules (always included)
-  plugins: ["typescript", "unicorn", "import", "node", "regexp"],
+  plugins: ["typescript", "unicorn", "import", "node"],
 
   // Bun runs as a Node.js-compatible runtime with browser globals (fetch, etc.)
   env: {

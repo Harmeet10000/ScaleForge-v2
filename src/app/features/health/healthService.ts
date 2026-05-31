@@ -21,7 +21,7 @@ export interface HealthCheckResult {
 }
 
 // Wrap a check so any failure (typed or defect) becomes an error string.
-const safe = <A>(effect: Effect.Effect<A, unknown, never>): Effect.Effect<"ok" | string, never, never> =>
+const safe = <A, R>(effect: Effect.Effect<A, unknown, R>): Effect.Effect<"ok" | string, never, R> =>
   effect.pipe(
     Effect.as("ok" as const),
     Effect.catchCause((cause) => {

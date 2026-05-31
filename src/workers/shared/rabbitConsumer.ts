@@ -14,7 +14,7 @@
  */
 
 import { Context, Effect, Layer, Queue, Scope } from "effect"
-import type { Channel, ConsumeMessage, Connection } from "amqplib"
+import type { Channel, ChannelModel, ConsumeMessage } from "amqplib"
 import amqplib from "amqplib"
 import { AppConfig } from "../../core/config/configService.ts"
 import { RabbitMQConnectionError } from "../../core/errors/infraErrors.ts"
@@ -60,7 +60,7 @@ export const RabbitConsumerService = Context.Service<RabbitConsumerService>(
 
 // ── Implementation ────────────────────────────────────────────────────────────
 
-const connectConsumerChannel = (url: string): Effect.Effect<{ conn: Connection; ch: Channel }, RabbitMQConnectionError> =>
+const connectConsumerChannel = (url: string): Effect.Effect<{ conn: ChannelModel; ch: Channel }, RabbitMQConnectionError> =>
   Effect.tryPromise({
     try: async () => {
       const conn = await amqplib.connect(url)
@@ -131,7 +131,7 @@ const make = Effect.gen(function* () {
 
                 // Offer to the queue; if the queue is full this blocks the
                 // amqplib I/O loop — that's intentional back-pressure.
-                Effect.runSync(Queue.unsafeOffer(q, ackedMsg))
+                Effect.runFork(Queue.offer(q, ackedMsg))
               },
               { noAck: autoAck },
             ),

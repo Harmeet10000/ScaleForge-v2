@@ -80,7 +80,7 @@ function extractImports(source: string): string[] {
     re.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = re.exec(source)) !== null) {
-      paths.push(m[1]);
+      paths.push(m[1]!)
     }
   }
   return paths;

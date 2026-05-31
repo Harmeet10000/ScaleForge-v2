@@ -1,82 +1,72 @@
-import { getDB } from '../../connections/connectPostgres';
-import { auditEntries } from '../schema/auditSchema';
-import { users } from '../schema/userSchema';
-import { logger } from '../../utils/logger';
-import { eq } from 'drizzle-orm';
+/**
+ * src/db/seeders/auditSeeder.ts
+ *
+ * Seeds initial audit entries into the database using a direct Neon connection.
+ */
+import { neon } from "@neondatabase/serverless"
+import { drizzle } from "drizzle-orm/neon-http"
+import { eq } from "drizzle-orm"
+import { auditEntries } from "../schema/auditSchema.ts"
+import { users } from "../schema/userSchema.ts"
 
-export const seedAuditEntries = async () => {
-  try {
-    const db = getDB();
+const getDatabaseUrl = (): string => {
+  const url = process.env["POSTGRES_DATABASE_URL"]
+  if (!url) throw new Error("POSTGRES_DATABASE_URL env var is not set")
+  return url
+}
 
-    logger.info('Seeding audit entries...');
+export const seedAuditEntries = async (): Promise<void> => {
+  const db = drizzle(neon(getDatabaseUrl()))
 
-    // Get admin user for audit entries
-    const adminUser = await db
-      .select()
-      .from(users)
-      .where(eq(users.emailAddress, 'admin@example.com'))
-      .limit(1);
+  console.log("[seeder] Seeding audit entries...")
 
-    if (adminUser.length === 0) {
-      logger.warn('Admin user not found, skipping audit seeding');
-      return;
-    }
+  // Get admin user for audit entries
+  const [adminUser] = await db
+    .select()
+    .from(users)
+    .where(eq(users.emailAddress, "admin@example.com"))
+    .limit(1)
 
-    const userId = adminUser[0].id;
+  if (!adminUser) {
+    console.warn("[seeder] Admin user not found, skipping audit seeding")
+    return
+  }
 
-    // Sample audit entries
-    const sampleAuditEntries = [
+  const userId = adminUser.id
+
+  // Sample audit entries
+  const entries = await db
+    .insert(auditEntries)
+    .values([
       {
-        entityType: 'user',
+        entityType: "user",
         entityId: userId,
-        operation: 'CREATE',
-        status: 'success',
+        operation: "CREATE",
+        status: "success",
         userId,
-        ipAddress: '127.0.0.1',
-        userAgent: 'Seeder Script',
-        requestId: 'seed-001',
-        newData: {
-          action: 'User account created',
-          details: 'Admin user account created during seeding'
-        },
-        metadata: {
-          source: 'seeder',
-          version: '1.0.0'
-        },
-        tags: ['seeding', 'user-creation']
+        ipAddress: "127.0.0.1",
+        userAgent: "Seeder Script",
+        requestId: "seed-001",
+        newData: { action: "User account created", details: "Admin user account created during seeding" },
+        metadata: { source: "seeder", version: "1.0.0" },
+        tags: ["seeding", "user-creation"],
       },
       {
-        entityType: 'system',
+        entityType: "system",
         entityId: userId,
-        operation: 'SEED',
-        status: 'success',
+        operation: "SEED",
+        status: "success",
         userId,
-        ipAddress: '127.0.0.1',
-        userAgent: 'Seeder Script',
-        requestId: 'seed-002',
-        newData: {
-          action: 'Database seeding completed',
-          details: 'Initial data seeding process completed successfully'
-        },
-        metadata: {
-          source: 'seeder',
-          version: '1.0.0',
-          timestamp: new Date().toISOString()
-        },
-        tags: ['seeding', 'system-initialization']
-      }
-    ];
+        ipAddress: "127.0.0.1",
+        userAgent: "Seeder Script",
+        requestId: "seed-002",
+        newData: { action: "Database seeding completed", details: "Initial data seeding completed" },
+        metadata: { source: "seeder", version: "1.0.0", timestamp: new Date().toISOString() },
+        tags: ["seeding", "system-initialization"],
+      },
+    ])
+    .returning()
 
-    // Insert audit entries
-    const insertedEntries = await db.insert(auditEntries).values(sampleAuditEntries).returning();
-
-    logger.info('Audit entries created successfully', {
-      meta: { count: insertedEntries.length }
-    });
-
-    logger.info('Audit seeding completed');
-  } catch (error) {
-    logger.error('Audit seeding failed:', { meta: { error: error.message } });
-    throw error;
-  }
-};
+  console.log(`[seeder] Audit entries created: ${entries.length}`)
+  console.log("[seeder] Audit seeding completed")
+}

@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schedule } from "effect"
-import amqplib, { type Connection, type Channel } from "amqplib"
+import amqplib, { type ChannelModel, type Channel } from "amqplib"
 import { AppConfig } from "../../core/config/configService.ts"
 import { RabbitMQConnectionError, RabbitMQPublishError } from "../../core/errors/infraErrors.ts"
 import { encode } from "./messageCodec.ts"
@@ -21,7 +21,7 @@ const connectWithRetry = (url: string) =>
       try: () => amqplib.connect(url),
       catch: (error) => new RabbitMQConnectionError({ cause: error }),
     }),
-    Schedule.exponential("1 second").pipe(Schedule.compose(Schedule.recurs(5)))
+    Schedule.both(Schedule.exponential("1 second"), Schedule.recurs(5))
   )
 
 const make = Effect.gen(function* () {
@@ -29,7 +29,7 @@ const make = Effect.gen(function* () {
 
   const { connection, channel } = yield* Effect.acquireRelease(
     Effect.gen(function* () {
-      const conn: Connection = yield* connectWithRetry(config.rabbitmq.url)
+      const conn: ChannelModel = yield* connectWithRetry(config.rabbitmq.url)
       const ch: Channel = yield* Effect.tryPromise({
         try: () => conn.createChannel(),
         catch: (error) => new RabbitMQConnectionError({ cause: error }),
@@ -69,7 +69,7 @@ const make = Effect.gen(function* () {
         catch: (error) => new RabbitMQPublishError({ exchange, routingKey, cause: error }),
       }).pipe(
         Effect.retry(
-          Schedule.exponential("100 millis").pipe(Schedule.compose(Schedule.recurs(3)))
+          Schedule.both(Schedule.exponential("100 millis"), Schedule.recurs(3))
         )
       ),
     isConnected: () => connected,

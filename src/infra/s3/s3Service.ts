@@ -130,16 +130,9 @@ const make = Effect.gen(function* () {
           await client.send(new HeadObjectCommand({ Bucket: bucket, Key: key }))
           return true
         },
-        catch: (error: unknown) => {
-          // HeadObject throws a 404 NotFound — treat as false, re-wrap others
-          if (typeof error === "object" && error !== null && "$metadata" in error) {
-            const meta = (error as { $metadata: { httpStatusCode?: number } }).$metadata
-            if (meta.httpStatusCode === 404) return new S3UploadError({ key, cause: error })
-          }
-          return new S3UploadError({ key, cause: error })
-        },
+        catch: (error: unknown) => new S3UploadError({ key, cause: error }),
       }).pipe(
-        Effect.catchAll(() => Effect.succeed(false)),
+        Effect.match({ onSuccess: (v) => v, onFailure: () => false }),
       ),
 
     publicUrl: (key) =>

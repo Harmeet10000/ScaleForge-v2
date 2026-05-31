@@ -83,7 +83,7 @@ python implementation that i would like to adopt
 ask for more clarification when confused. also see the existing pipeline for elasticsearch see that can and needs to be adopted for easy scaling, good performance, reflecting real world use cases for comapnies like flippart. 
 make a detailed plan first. use relevant skills that you require for brainstorming. after that move to the next parts of phase 6
 when asking for clarification also give me pros and cons of each proposed solution such that i can make a opinionated chice from them
-
+58. check the GEH for the new effect based backend
 ```
 // logger.ts
 import pino from 'pino';

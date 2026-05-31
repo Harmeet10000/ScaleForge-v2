@@ -1,6 +1,4 @@
 import type { FastifyInstance } from "fastify"
-import { eq } from "drizzle-orm"
-import { featureFlags } from "../../../db/schema/featureFlagSchema.ts"
 
 // Admin-only routes — protect with PASETO + role check in Phase 5.
 // For now: stubs that will be wired to FeatureFlagService in Phase 3+.

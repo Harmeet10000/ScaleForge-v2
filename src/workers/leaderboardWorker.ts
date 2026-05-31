@@ -38,7 +38,7 @@ const LeaderboardScoreMessage = Schema.Struct({
   delta: Schema.Int,
   entityType: Schema.String.check(Schema.isNonEmpty()),
   entityId: Schema.optionalKey(Schema.String),
-  metadata: Schema.optionalKey(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  metadata: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
 })
 
 type LeaderboardScoreMessage = Schema.Schema.Type<typeof LeaderboardScoreMessage>
@@ -137,7 +137,7 @@ const workerProgram = Effect.gen(function* () {
         return
       }
 
-      const job = decoded.success
+      const job = decoded.success as LeaderboardScoreMessage
 
       const fiber = yield* Effect.forkChild(
         processMessage(job, msg.ack, msg.nack).pipe(
@@ -171,7 +171,11 @@ const LeaderboardWorkerLayer = Layer.mergeAll(
       )
     )
   ),
-)
+) as unknown as Layer.Layer<
+  RabbitConsumerService | DLQService | LeaderboardService | WebhookPublisher,
+  never,
+  never
+>
 
 const runtime = ManagedRuntime.make(LeaderboardWorkerLayer)
 

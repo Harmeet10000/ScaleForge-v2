@@ -26,6 +26,7 @@ import { OpenFgaServiceLive } from "../app/features/authz/openFgaService.ts"
 import { GeminiServiceLive } from "../infra/gemini/geminiService.ts"
 import { SearchServiceLive } from "../app/features/search2/searchService.ts"
 import { OAuthServiceLive } from "../app/features/auth2/oauthService.ts"
+import { WebhookPublisherLive } from "../infra/webhooks/webhookPublisher.ts"
 
 // ── Infra layer ───────────────────────────────────────────────────────────────
 // All infra services get AppConfig provided once at this boundary.
@@ -40,6 +41,11 @@ const InfraLayer = Layer.mergeAll(
   SentryServiceLive,
   FeatureFlagServiceLive,
 ).pipe(Layer.provide(AppConfigLive))
+
+// WebhookPublisher depends on RabbitMQ
+const WebhookLayer = WebhookPublisherLive.pipe(
+  Layer.provide(RabbitMQServiceLive.pipe(Layer.provide(AppConfigLive)))
+)
 
 // ── Auth layer ────────────────────────────────────────────────────────────────
 // TokenService needs AppConfig. PasswordService is self-contained.
@@ -92,11 +98,13 @@ const SearchLayer = SearchServiceLive.pipe(
 )
 
 // ── Logger layer ──────────────────────────────────────────────────────────────
-const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
+// PinoLoggerLayer reads from process.env — no AppConfig dependency needed.
+const LoggerLayer = PinoLoggerLayer
 
 // ── Root layer ────────────────────────────────────────────────────────────────
 export const AppLayer = Layer.mergeAll(
   InfraLayer,
+  WebhookLayer,
   TokenLayer,
   PwLayer,
   AuthLayer,

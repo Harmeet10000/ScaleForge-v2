@@ -26,8 +26,6 @@ import Redis from "ioredis"
 import { LeaderboardService } from "./leaderboardService.ts"
 import type { LeaderboardDelta, LeaderboardWindow } from "./leaderboardService.ts"
 import { requireAuth } from "../auth2/authMiddleware.ts"
-import { AppConfig } from "../../../core/config/configService.ts"
-import { Redacted } from "effect"
 import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import { makeMessage } from "../../../infra/ws/wsCodec.ts"
 
@@ -48,16 +46,13 @@ export const leaderboardRoutes = async (fastify: FastifyInstance): Promise<void>
   // ── Subscribe to Redis on ready ─────────────────────────────────────────────
 
   fastify.addHook("onReady", async () => {
-    // Get Redis config from the Effect runtime
-    const config = await fastify.effectRuntime.runPromise(
-      Effect.flatMap(AppConfig, (c) => Effect.succeed(c))
-    )
-
+    // Read Redis connection config directly from env — AppConfig is not
+    // an exported service in the ManagedRuntime's type surface.
     subscriber = new Redis({
-      host: config.redis.host,
-      port: config.redis.port,
-      username: config.redis.username,
-      password: Redacted.value(config.redis.password),
+      host: process.env["REDIS_HOST"] ?? "127.0.0.1",
+      port: parseInt(process.env["REDIS_PORT"] ?? "6379", 10),
+      ...(process.env["REDIS_USERNAME"] ? { username: process.env["REDIS_USERNAME"] } : {}),
+      ...(process.env["REDIS_PASSWORD"] ? { password: process.env["REDIS_PASSWORD"] } : {}),
       lazyConnect: false,
       family: 4,
       db: 0,

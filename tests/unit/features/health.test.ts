@@ -6,11 +6,11 @@
  */
 
 import { describe, it, expect } from "bun:test"
-import { Effect, Layer, Exit } from "effect"
+import { Effect, Layer } from "effect"
 import { MongoService } from "../../../src/infra/mongo/mongoService.ts"
 import { PostgresService } from "../../../src/infra/postgres/postgresService.ts"
 import { RedisService } from "../../../src/infra/redis/redisService.ts"
-import { healthCheck, type HealthCheckResult } from "../../../src/app/features/health/healthService.ts"
+import { healthCheck } from "../../../src/app/features/health/healthService.ts"
 import {
   MongoConnectionError,
   PostgresQueryError,
@@ -21,11 +21,13 @@ import {
 
 const healthyMongo = Layer.succeed(MongoService, MongoService.of({
   connection: {} as never,
+  isConnected: () => true,
   ping: () => Effect.succeed("PONG" as const),
 }))
 
 const unhealthyMongo = Layer.succeed(MongoService, MongoService.of({
   connection: {} as never,
+  isConnected: () => false,
   ping: () => Effect.fail(new MongoConnectionError({ cause: new Error("mongo down") })),
 }))
 
@@ -43,6 +45,8 @@ const healthyRedis = Layer.succeed(RedisService, RedisService.of({
   client: {} as never,
   get: () => Effect.succeed(null),
   set: () => Effect.succeed("OK" as const),
+  getBuffer: () => Effect.succeed(null),
+  setBuffer: () => Effect.succeed("OK" as const),
   del: () => Effect.succeed(0),
   hget: () => Effect.succeed(null),
   hset: () => Effect.void,
@@ -55,6 +59,8 @@ const unhealthyRedis = Layer.succeed(RedisService, RedisService.of({
   client: {} as never,
   get: () => Effect.succeed(null),
   set: () => Effect.succeed("OK" as const),
+  getBuffer: () => Effect.succeed(null),
+  setBuffer: () => Effect.succeed("OK" as const),
   del: () => Effect.succeed(0),
   hget: () => Effect.succeed(null),
   hset: () => Effect.void,

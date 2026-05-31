@@ -210,7 +210,7 @@ const WorkerRootLayer = Layer.mergeAll(
   WorkerLayer,
   RabbitConsumerServiceLive.pipe(Layer.provide(AppConfigLive)),
   DLQServiceLive.pipe(Layer.provide(AppConfigLive)),
-) as unknown as Layer.Layer<RabbitConsumerService | DLQService, never, never>
+) as unknown as Layer.Layer<PostgresService | MetricsService | RabbitConsumerService | DLQService, never, never>
 
 const runtime = ManagedRuntime.make(WorkerRootLayer)
 

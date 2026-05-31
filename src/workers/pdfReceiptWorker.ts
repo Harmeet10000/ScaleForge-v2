@@ -58,7 +58,7 @@ interface ReceiptData {
   customerDetails: unknown
 }
 
-const generatePdfBuffer = (data: ReceiptData): Effect.Effect<Buffer> =>
+const generatePdfBuffer = (data: ReceiptData): Effect.Effect<Buffer, Error> =>
   Effect.tryPromise({
     try: () =>
       new Promise<Buffer>((resolve, reject) => {
@@ -112,7 +112,7 @@ const generatePdfBuffer = (data: ReceiptData): Effect.Effect<Buffer> =>
 
         doc.end()
       }),
-    catch: (e) => e,
+    catch: (e) => (e instanceof Error ? e : new Error(String(e))),
   })
 
 // ── Message processor ─────────────────────────────────────────────────────────
@@ -270,7 +270,7 @@ const WorkerRootLayer = Layer.mergeAll(
   S3ServiceLive.pipe(Layer.provide(AppConfigLive)),
   RabbitConsumerServiceLive.pipe(Layer.provide(AppConfigLive)),
   DLQServiceLive.pipe(Layer.provide(AppConfigLive)),
-) as unknown as Layer.Layer<S3Service | RabbitConsumerService | DLQService, never, never>
+) as unknown as Layer.Layer<PostgresService | WebhookPublisher | S3Service | RabbitConsumerService | DLQService, never, never>
 
 const runtime = ManagedRuntime.make(WorkerRootLayer)
 
