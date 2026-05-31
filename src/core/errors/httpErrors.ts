@@ -23,6 +23,10 @@ import type {
   InvalidTokenError,
   InvalidOAuthCredentialsError,
   TokenExpiredError,
+  ApiKeyNotFoundError,
+  ApiKeyExpiredError,
+  ApiKeyRevokedError,
+  ApiKeyInvalidError,
 } from "./authErrors.ts"
 import type { HealthCheckError } from "./infraErrors.ts"
 
@@ -58,6 +62,10 @@ export type AppError =
   | InvalidOAuthCredentialsError
   | HealthCheckError
   | TooManyRequestsError
+  | ApiKeyNotFoundError
+  | ApiKeyExpiredError
+  | ApiKeyRevokedError
+  | ApiKeyInvalidError
 
 const httpError = (statusCode: number, message: string): HttpErrorResponse => ({
   success: false,
@@ -124,4 +132,9 @@ export const toHttpError = (error: AppError): HttpErrorResponse =>
     .with({ _tag: "HealthCheckError" }, (e) =>
       httpError(503, `Health check failed: ${e.component}`)
     )
+    // ── API key errors ────────────────────────────────────────────────────────
+    .with({ _tag: "ApiKeyNotFoundError" }, () => httpError(401, "Invalid API key"))
+    .with({ _tag: "ApiKeyExpiredError" }, () => httpError(401, "API key has expired"))
+    .with({ _tag: "ApiKeyRevokedError" }, () => httpError(401, "API key has been revoked"))
+    .with({ _tag: "ApiKeyInvalidError" }, (e) => httpError(401, `Invalid API key: ${e.reason}`))
     .exhaustive()

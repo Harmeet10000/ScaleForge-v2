@@ -11,6 +11,9 @@ import cookie from "@fastify/cookie"
 import compress from "@fastify/compress"
 import underPressure from "@fastify/under-pressure"
 import requestContextPlugin from "@fastify/request-context"
+import formbody from "@fastify/formbody"
+import responseValidation from "@fastify/response-validation"
+import fastifyOtel from "@fastify/otel"
 import swagger from "@fastify/swagger"
 import swaggerUi from "@fastify/swagger-ui"
 import fastifyBridgePlugin from "../runtime/fastifyBridge.ts"
@@ -66,7 +69,20 @@ export const buildApp = async () => {
     retryAfter: 50,
   })
 
-  // 9. OpenAPI / Swagger
+  // 9. Formbody — parse application/x-www-form-urlencoded (required for OAuth redirect form posts)
+  await fastify.register(formbody)
+
+  // 10. OpenTelemetry Fastify instrumentation — adds per-route OTel spans.
+  //     Complements @opentelemetry/auto-instrumentations-node by providing
+  //     Fastify-native spans with route-level granularity.
+  await fastify.register(fastifyOtel, { wrapRoutes: true })
+
+  // 11. Response validation (dev/staging only) — catches response contract drift
+  if (process.env["NODE_ENV"] !== "production") {
+    await fastify.register(responseValidation, { ajv: { coerceTypes: false } })
+  }
+
+  // 12. OpenAPI / Swagger
   await fastify.register(swagger, {
     openapi: {
       info: { title: "ScaleForge API", version: "1.0.0", description: "Production-grade API" },

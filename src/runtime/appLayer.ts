@@ -20,6 +20,7 @@ import { FeatureFlagServiceLive } from "../infra/featureFlags/featureFlagService
 import { TokenServiceLive } from "../app/features/auth2/tokenService.ts"
 import { PasswordServiceLive } from "../app/features/auth2/passwordService.ts"
 import { AuthServiceLive } from "../app/features/auth2/authService.ts"
+import { ApiKeyServiceLive } from "../app/features/auth2/apiKeyService.ts"
 
 // ── Infra layer ───────────────────────────────────────────────────────────────
 // All infra services get AppConfig provided once at this boundary.
@@ -49,6 +50,14 @@ const AuthLayer = AuthServiceLive.pipe(
   ))
 )
 
+// ApiKeyService needs Postgres + AppConfig
+const ApiKeyLayer = ApiKeyServiceLive.pipe(
+  Layer.provide(Layer.mergeAll(
+    PostgresServiceLive.pipe(Layer.provide(AppConfigLive)),
+    AppConfigLive,
+  ))
+)
+
 // ── Logger layer ──────────────────────────────────────────────────────────────
 const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
 
@@ -58,5 +67,6 @@ export const AppLayer = Layer.mergeAll(
   TokenLayer,
   PwLayer,
   AuthLayer,
+  ApiKeyLayer,
   LoggerLayer,
 )

@@ -45,3 +45,21 @@ export class TokenExpiredError extends Data.TaggedError("TokenExpiredError")<{
 export class InvalidOAuthCredentialsError extends Data.TaggedError("InvalidOAuthCredentialsError")<{
   readonly provider: string
 }> {}
+
+// ── API Key errors ────────────────────────────────────────────────────────────
+
+export class ApiKeyNotFoundError extends Data.TaggedError("ApiKeyNotFoundError")<{
+  readonly prefix: string
+}> {}
+
+export class ApiKeyExpiredError extends Data.TaggedError("ApiKeyExpiredError")<{
+  readonly keyId: string
+}> {}
+
+export class ApiKeyRevokedError extends Data.TaggedError("ApiKeyRevokedError")<{
+  readonly keyId: string
+}> {}
+
+export class ApiKeyInvalidError extends Data.TaggedError("ApiKeyInvalidError")<{
+  readonly reason: string
+}> {}
