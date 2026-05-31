@@ -15,7 +15,7 @@
  * On failure: nack after MAX_PDF_ATTEMPTS → DLQ
  */
 
-import { Effect, ManagedRuntime, Queue, Schema, Layer } from "effect"
+import { Effect, ManagedRuntime, Queue, Schema, Layer, Result } from "effect"
 import closeWithGrace from "close-with-grace"
 import PDFDocument from "pdfkit"
 import { eq } from "drizzle-orm"
@@ -34,7 +34,7 @@ import { AppConfigLive } from "../core/config/configService.ts"
 const PdfReceiptJobSchema = Schema.Struct({
   paymentId: Schema.String,
   userId: Schema.String,
-  attempt: Schema.Number.pipe(Schema.int(), Schema.between(0, 5)),
+  attempt: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 5 })),
 })
 
 type PdfReceiptJob = Schema.Schema.Type<typeof PdfReceiptJobSchema>
@@ -59,56 +59,60 @@ interface ReceiptData {
 }
 
 const generatePdfBuffer = (data: ReceiptData): Effect.Effect<Buffer> =>
-  Effect.async((resume) => {
-    const doc = new PDFDocument({ margin: 50, size: "A4" })
-    const chunks: Buffer[] = []
+  Effect.tryPromise({
+    try: () =>
+      new Promise<Buffer>((resolve, reject) => {
+        const doc = new PDFDocument({ margin: 50, size: "A4" })
+        const chunks: Buffer[] = []
 
-    doc.on("data", (chunk: Buffer) => chunks.push(chunk))
-    doc.on("end", () => resume(Effect.succeed(Buffer.concat(chunks))))
-    doc.on("error", (err: unknown) => resume(Effect.die(err)))
+        doc.on("data", (chunk: Buffer) => chunks.push(chunk))
+        doc.on("end", () => resolve(Buffer.concat(chunks)))
+        doc.on("error", reject)
 
-    // Header
-    doc.fontSize(24).font("Helvetica-Bold").text("ScaleForge", 50, 50)
-    doc.fontSize(10).font("Helvetica").fillColor("#666666").text("Payment Receipt", 50, 80)
-    doc.moveDown(2)
+        // Header
+        doc.fontSize(24).font("Helvetica-Bold").text("ScaleForge", 50, 50)
+        doc.fontSize(10).font("Helvetica").fillColor("#666666").text("Payment Receipt", 50, 80)
+        doc.moveDown(2)
 
-    // Divider
-    doc.moveTo(50, 110).lineTo(545, 110).stroke("#e0e0e0")
+        // Divider
+        doc.moveTo(50, 110).lineTo(545, 110).stroke("#e0e0e0")
 
-    // Receipt details
-    doc.fontSize(12).fillColor("#000000")
-    doc.font("Helvetica-Bold").text("Receipt Details", 50, 130)
-    doc.moveDown(0.5)
+        // Receipt details
+        doc.fontSize(12).fillColor("#000000")
+        doc.font("Helvetica-Bold").text("Receipt Details", 50, 130)
+        doc.moveDown(0.5)
 
-    const details: Array<[string, string]> = [
-      ["Payment ID", data.paymentId],
-      ["User ID", data.userId],
-      ["Amount", `${data.amount} ${data.currency}`],
-      ["Status", data.status.toUpperCase()],
-      ["Description", data.description ?? "—"],
-      ["Payment Date", data.paidAt ? data.paidAt.toLocaleDateString("en-IN") : "—"],
-      ["Receipt Generated", new Date().toLocaleString("en-IN")],
-    ]
+        const details: Array<[string, string]> = [
+          ["Payment ID", data.paymentId],
+          ["User ID", data.userId],
+          ["Amount", `${data.amount} ${data.currency}`],
+          ["Status", data.status.toUpperCase()],
+          ["Description", data.description ?? "—"],
+          ["Payment Date", data.paidAt ? data.paidAt.toLocaleDateString("en-IN") : "—"],
+          ["Receipt Generated", new Date().toLocaleString("en-IN")],
+        ]
 
-    for (const [label, value] of details) {
-      doc.font("Helvetica-Bold").fontSize(10).text(`${label}:`, 50, undefined, { continued: true, width: 180 })
-      doc.font("Helvetica").fontSize(10).text(` ${value}`)
-      doc.moveDown(0.3)
-    }
+        for (const [label, value] of details) {
+          doc.font("Helvetica-Bold").fontSize(10).text(`${label}:`, 50, undefined, { continued: true, width: 180 })
+          doc.font("Helvetica").fontSize(10).text(` ${value}`)
+          doc.moveDown(0.3)
+        }
 
-    doc.moveDown(2)
-    doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#e0e0e0")
-    doc.moveDown(1)
+        doc.moveDown(2)
+        doc.moveTo(50, doc.y).lineTo(545, doc.y).stroke("#e0e0e0")
+        doc.moveDown(1)
 
-    // Footer
-    doc.fontSize(8).fillColor("#999999").text(
-      "This is a computer-generated receipt. No signature required.",
-      50,
-      undefined,
-      { align: "center" },
-    )
+        // Footer
+        doc.fontSize(8).fillColor("#999999").text(
+          "This is a computer-generated receipt. No signature required.",
+          50,
+          undefined,
+          { align: "center" },
+        )
 
-    doc.end()
+        doc.end()
+      }),
+    catch: (e) => e,
   })
 
 // ── Message processor ─────────────────────────────────────────────────────────
@@ -128,9 +132,12 @@ const processJob = (
       try: () => db.select().from(payments).where(eq(payments.id, job.paymentId)).limit(1),
       catch: (e) => e,
     }).pipe(
-      Effect.catchAll((e) => {
-        yield* Effect.logError(`[pdf-worker] DB fetch failed for ${job.paymentId}`, e)
-        return Effect.succeed([] as typeof rows)
+      Effect.matchEffect({
+        onSuccess: (r) => Effect.succeed(r),
+        onFailure: (e) =>
+          Effect.logError(`[pdf-worker] DB fetch failed for ${job.paymentId}`, e).pipe(
+            Effect.as([] as Array<typeof payments.$inferSelect>),
+          ),
       }),
     )
 
@@ -155,10 +162,11 @@ const processJob = (
 
     // Generate PDF
     const pdfBuffer = yield* generatePdfBuffer(receiptData).pipe(
-      Effect.catchAllCause((cause) => {
-        yield* Effect.logError(`[pdf-worker] PDF generation failed`, cause)
-        return Effect.fail(cause)
-      }),
+      Effect.catchCause((cause) =>
+        Effect.logError(`[pdf-worker] PDF generation failed`, cause).pipe(
+          Effect.flatMap(() => Effect.failCause(cause)),
+        ),
+      ),
     )
 
     // Upload to S3
@@ -173,8 +181,10 @@ const processJob = (
         generatedAt: new Date().toISOString(),
       },
     }).pipe(
-      Effect.map(() => ({ ok: true as const })),
-      Effect.catchAll((err) => Effect.succeed({ ok: false as const, error: err })),
+      Effect.match({
+        onSuccess: () => ({ ok: true as const }),
+        onFailure: (err) => ({ ok: false as const, error: err }),
+      }),
     )
 
     if (!uploadResult.ok) {
@@ -209,12 +219,12 @@ const processJob = (
     }).pipe(Effect.ignore)
 
     yield* ack()
-    yield* Effect.flatMap(WebhookPublisher, p =>
-      p.emit('receipt.generated', { paymentId: job.paymentId, userId: job.userId, s3Key })
+    yield* Effect.flatMap(WebhookPublisher, (p) =>
+      p.emit("receipt.generated", { paymentId: job.paymentId, userId: job.userId, s3Key }),
     ).pipe(Effect.ignore)
     yield* Effect.log(`[pdf-worker] receipt generated for ${job.paymentId} → ${s3Key}`)
   }).pipe(
-    Effect.catchAllCause((cause) =>
+    Effect.catchCause((cause) =>
       Effect.gen(function* () {
         yield* Effect.logError(`[pdf-worker] unhandled failure`, cause)
         yield* nack()
@@ -242,13 +252,13 @@ const workerProgram = Effect.gen(function* () {
       const msg = yield* Queue.take(msgQueue)
       const decoded = Schema.decodeUnknownResult(PdfReceiptJobSchema)(msg.body)
 
-      if (!decoded.success) {
-        yield* Effect.logWarning(`[pdf-worker] invalid job schema`)
+      if (Result.isFailure(decoded)) {
+        yield* Effect.logWarning(`[pdf-worker] invalid job schema`, decoded.failure)
         yield* msg.nack()
         return
       }
 
-      yield* Effect.fork(processJob(decoded.value, msg.ack, msg.nack))
+      yield* Effect.forkScoped(processJob(decoded.success, msg.ack, msg.nack))
     }),
   )
 })
@@ -260,31 +270,27 @@ const WorkerRootLayer = Layer.mergeAll(
   S3ServiceLive.pipe(Layer.provide(AppConfigLive)),
   RabbitConsumerServiceLive.pipe(Layer.provide(AppConfigLive)),
   DLQServiceLive.pipe(Layer.provide(AppConfigLive)),
-)
+) as unknown as Layer.Layer<S3Service | RabbitConsumerService | DLQService, never, never>
 
 const runtime = ManagedRuntime.make(WorkerRootLayer)
 
-// close-with-grace handles SIGTERM + SIGINT + unhandledRejection and gives a
-// 10 s deadline to drain in-flight PDF jobs before force-killing the process.
 closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   if (err) {
     console.error("[pdf-worker] unexpected error — shutting down:", err)
   } else {
     console.log(`[pdf-worker] received ${signal ?? "close"}, shutting down…`)
   }
-  await Effect.runPromise(runtime.dispose())
+  await runtime.dispose()
 })
 
-Effect.runFork(
-  runtime.runFork(
-    workerProgram.pipe(
-      Effect.scoped,
-      Effect.catchAllCause((cause) =>
-        Effect.sync(() => {
-          console.error("[pdf-worker] fatal", cause)
-          process.exit(1)
-        }),
-      ),
+runtime.runFork(
+  workerProgram.pipe(
+    Effect.scoped,
+    Effect.catchCause((cause) =>
+      Effect.sync(() => {
+        console.error("[pdf-worker] fatal", cause)
+        process.exit(1)
+      }),
     ),
   ),
 )

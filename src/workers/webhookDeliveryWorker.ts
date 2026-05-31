@@ -22,10 +22,9 @@
  * consumer channel via RabbitConsumerService (separate connection per worker process).
  */
 
-import { Effect, ManagedRuntime, Queue, Schema, Fiber, Scope, Layer } from "effect"
+import { Effect, ManagedRuntime, Queue, Schema, Result, Fiber, Layer } from "effect"
 import closeWithGrace from "close-with-grace"
 import { eq, sql } from "drizzle-orm"
-import { createId } from "@paralleldrive/cuid2"
 import { PostgresService } from "../infra/postgres/postgresService.ts"
 import { MetricsService } from "../infra/telemetry/metricsService.ts"
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
@@ -44,8 +43,8 @@ const WebhookJobSchema = Schema.Struct({
   event: Schema.String,
   payload: Schema.Unknown,
   secret: Schema.String,
-  url: Schema.String.check(Schema.nonEmpty()),
-  attempt: Schema.Number.pipe(Schema.int(), Schema.between(0, MAX_ATTEMPTS)),
+  url: Schema.String.check(Schema.isNonEmpty()),
+  attempt: Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: MAX_ATTEMPTS })),
 })
 
 type WebhookJob = Schema.Schema.Type<typeof WebhookJobSchema>
@@ -105,7 +104,10 @@ const processMessage = (job: WebhookJob, ack: () => Effect.Effect<void>, nack: (
 
     const result = yield* deliverWebhook(job).pipe(
       Effect.map((statusCode) => ({ ok: true as const, statusCode })),
-      Effect.catchAll((err) => Effect.succeed({ ok: false as const, error: err })),
+      Effect.matchEffect({
+        onSuccess: (r) => Effect.succeed(r),
+        onFailure: (err) => Effect.succeed({ ok: false as const, error: err }),
+      }),
     )
 
     if (result.ok) {
@@ -169,32 +171,32 @@ const workerProgram = Effect.gen(function* () {
   yield* Effect.log(`[webhook-worker] consuming from ${QUEUE_NAME}`)
 
   // Drain messages forever; each message is processed in an isolated fiber.
-  const activeFibers = new Set<Fiber.RuntimeFiber<void, never>>()
+  const activeFibers = new Set<Fiber.Fiber<void, never>>()
 
   yield* Effect.forever(
     Effect.gen(function* () {
       const msg = yield* Queue.take(msgQueue)
       const decoded = Schema.decodeUnknownResult(WebhookJobSchema)(msg.body)
 
-      if (!decoded.success) {
+      if (Result.isFailure(decoded)) {
         yield* Effect.logWarning(`[webhook-worker] invalid job schema — nacking`, decoded.failure)
         yield* msg.nack()
         return
       }
 
-      const job = decoded.value
+      const job = decoded.success
 
       // Fork processing so we don't block the consumer loop.
-      const fiber = yield* Effect.fork(
+      const fiber = yield* Effect.forkScoped(
         processMessage(job, msg.ack, msg.nack).pipe(
-          Effect.catchAllCause((cause) =>
+          Effect.catchCause((cause) =>
             Effect.logError(`[webhook-worker] unhandled error in fiber`, cause),
           ),
         ),
       )
 
       activeFibers.add(fiber)
-      void fiber.await.pipe(
+      void Fiber.await(fiber).pipe(
         Effect.map(() => activeFibers.delete(fiber)),
         Effect.runFork,
       )
@@ -208,7 +210,7 @@ const WorkerRootLayer = Layer.mergeAll(
   WorkerLayer,
   RabbitConsumerServiceLive.pipe(Layer.provide(AppConfigLive)),
   DLQServiceLive.pipe(Layer.provide(AppConfigLive)),
-)
+) as unknown as Layer.Layer<RabbitConsumerService | DLQService, never, never>
 
 const runtime = ManagedRuntime.make(WorkerRootLayer)
 
@@ -220,19 +222,17 @@ closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   } else {
     console.log(`[webhook-worker] received ${signal ?? "close"}, shutting down…`)
   }
-  await Effect.runPromise(runtime.dispose())
+  await runtime.dispose()
 })
 
-Effect.runFork(
-  runtime.runFork(
-    workerProgram.pipe(
-      Effect.scoped,
-      Effect.catchAllCause((cause) =>
-        Effect.sync(() => {
-          console.error("[webhook-worker] fatal error", cause)
-          process.exit(1)
-        }),
-      ),
+runtime.runFork(
+  workerProgram.pipe(
+    Effect.scoped,
+    Effect.catchCause((cause) =>
+      Effect.sync(() => {
+        console.error("[webhook-worker] fatal error", cause)
+        process.exit(1)
+      }),
     ),
   ),
 )
