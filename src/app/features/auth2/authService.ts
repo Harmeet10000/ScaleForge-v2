@@ -29,6 +29,7 @@ import {
   PasswordSameAsOldError,
   InvalidOldPasswordError,
 } from "../../../core/errors/authErrors.ts"
+import type { OAuthUserProfile } from "./oauthService.ts"
 
 // ── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -85,6 +86,10 @@ export interface AuthService {
   readonly changePassword: (userId: string, oldPassword: string, newPassword: string) => Effect.Effect<
     void,
     UserNotFoundError | InvalidOldPasswordError | PasswordSameAsOldError
+  >
+  readonly handleGoogleOAuth: (profile: OAuthUserProfile) => Effect.Effect<
+    { tokens: AuthTokens; user: UserProfile; isNewUser: boolean },
+    never
   >
 }
 
@@ -332,9 +337,66 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.orDie)
     })
 
+  const handleGoogleOAuth = (profile: OAuthUserProfile) =>
+    Effect.gen(function* () {
+      // Look up user by email
+      const rows = yield* postgres.query((db) =>
+        db.select({ id: users.id, name: users.name, email: users.emailAddress, role: users.role })
+          .from(users)
+          .where(eq(users.emailAddress, profile.email))
+          .limit(1)
+      ).pipe(Effect.orDie)
+
+      let userId: string
+      let userName: string
+      let userRole: string
+      let isNewUser = false
+
+      if (rows.length > 0) {
+        const u = rows[0]!
+        userId = u.id
+        userName = u.name
+        userRole = (u.role as string | null) ?? "user"
+      } else {
+        // Create new user (no password — OAuth-only account)
+        userId = createId()
+        userName = profile.name
+        userRole = "user"
+        isNewUser = true
+        yield* postgres.query((db) =>
+          db.insert(users).values({
+            id: userId,
+            name: profile.name,
+            emailAddress: profile.email,
+            password: "",
+            role: "user",
+            isVerified: true,
+            accountConfirmation: {
+              status: true,
+              token: null,
+              code: null,
+              timestamp: new Date().toISOString(),
+            },
+          })
+        ).pipe(Effect.orDie)
+      }
+
+      const [accessToken, refreshToken] = yield* Effect.all([
+        tokenSvc.signAccess(userId, userRole),
+        tokenSvc.signRefresh(userId),
+      ])
+
+      return {
+        tokens: { accessToken, refreshToken } satisfies AuthTokens,
+        user: { id: userId, name: userName, email: profile.email, role: userRole } satisfies UserProfile,
+        isNewUser,
+      }
+    })
+
   return AuthService.of({
     register, login, refreshTokens, logout,
     confirmAccount, forgotPassword, resetPassword, changePassword,
+    handleGoogleOAuth,
   })
 })
 

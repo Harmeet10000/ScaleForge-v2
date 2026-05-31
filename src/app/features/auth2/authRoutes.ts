@@ -16,6 +16,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
 import type { CookieSerializeOptions } from "@fastify/cookie"
 import { Effect, Schema, Result } from "effect"
 import { AuthService } from "./authService.ts"
+import { OAuthService } from "./oauthService.ts"
 import { requireAuth } from "./authMiddleware.ts"
 import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 
@@ -29,6 +30,16 @@ const refreshCookieOptions: CookieSerializeOptions = {
   sameSite: "strict",
   path: "/api/v1/auth",
   maxAge: 60 * 60 * 24 * 7,
+}
+
+const OAUTH_STATE_COOKIE = "oauth_state"
+const OAUTH_VERIFIER_COOKIE = "oauth_verifier"
+const oauthCookieOptions: CookieSerializeOptions = {
+  httpOnly: true,
+  secure: process.env["NODE_ENV"] === "production",
+  sameSite: "lax",
+  path: "/",
+  maxAge: 60 * 10, // 10 minutes
 }
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -101,6 +112,16 @@ const decodeResetPassword = (body: unknown) => {
 
 const decodeChangePassword = (body: unknown) => {
   const result = Schema.decodeUnknownResult(ChangePasswordBody)(body)
+  return Result.isSuccess(result) ? result.success : null
+}
+
+const OAuthCallbackQuery = Schema.Struct({
+  code: Schema.NonEmptyString,
+  state: Schema.NonEmptyString,
+})
+
+const decodeOAuthCallback = (query: unknown) => {
+  const result = Schema.decodeUnknownResult(OAuthCallbackQuery)(query)
   return Result.isSuccess(result) ? result.success : null
 }
 
@@ -262,6 +283,60 @@ export const authRoutes = async (fastify: FastifyInstance) => {
       {
         transform: (_void, reply) => {
           void reply.status(200).send({ success: true, statusCode: 200, message: "Password changed successfully", data: null })
+        },
+      },
+    )
+  })
+
+  // GET /auth/oauth/google — initiate OAuth flow
+  fastify.get("/auth/oauth/google", {
+    schema: { tags: ["Auth"], summary: "Begin Google OAuth flow" },
+  }, async (req, reply) => {
+    return effectHandler(req, reply,
+      Effect.flatMap(OAuthService, (s) => s.startGoogleFlow()),
+      {
+        transform: ({ authorizationUrl, state, codeVerifier }, reply) => {
+          void reply.setCookie(OAUTH_STATE_COOKIE, state, oauthCookieOptions)
+          void reply.setCookie(OAUTH_VERIFIER_COOKIE, codeVerifier, oauthCookieOptions)
+          void reply.redirect(authorizationUrl)
+        },
+      },
+    )
+  })
+
+  // GET /auth/oauth/google/callback — exchange code for tokens
+  fastify.get("/auth/oauth/google/callback", {
+    schema: { tags: ["Auth"], summary: "Google OAuth callback" },
+  }, async (req, reply) => {
+    const query = decodeOAuthCallback(req.query)
+    if (!query) return badRequest(reply, "Missing code or state")
+
+    const savedState = req.cookies[OAUTH_STATE_COOKIE]
+    if (!savedState || savedState !== query.state) {
+      return void reply.status(400).send({ success: false, statusCode: 400, message: "OAuth state mismatch", data: null })
+    }
+    const codeVerifier = req.cookies[OAUTH_VERIFIER_COOKIE]
+    if (!codeVerifier) {
+      return void reply.status(400).send({ success: false, statusCode: 400, message: "Missing PKCE verifier", data: null })
+    }
+
+    return effectHandler(req, reply,
+      Effect.gen(function* () {
+        const oauth = yield* OAuthService
+        const auth = yield* AuthService
+        const profile = yield* oauth.exchangeGoogleCode(query.code, codeVerifier)
+        return yield* auth.handleGoogleOAuth(profile)
+      }),
+      {
+        transform: ({ tokens, user, isNewUser }, reply) => {
+          void reply.clearCookie(OAUTH_STATE_COOKIE)
+          void reply.clearCookie(OAUTH_VERIFIER_COOKIE)
+          void reply.setCookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions)
+          const code = isNewUser ? 201 : 200
+          void reply.status(code).send({
+            success: true, statusCode: code, message: isNewUser ? "Account created" : "OK",
+            data: { accessToken: tokens.accessToken, user },
+          })
         },
       },
     )
