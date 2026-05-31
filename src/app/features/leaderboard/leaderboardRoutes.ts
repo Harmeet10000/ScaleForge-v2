@@ -21,15 +21,14 @@
  */
 
 import type { FastifyInstance } from "fastify"
-import { Effect, Cause, Result } from "effect"
+import { Effect } from "effect"
 import Redis from "ioredis"
 import { LeaderboardService } from "./leaderboardService.ts"
 import type { LeaderboardDelta, LeaderboardWindow } from "./leaderboardService.ts"
 import { requireAuth } from "../auth2/authMiddleware.ts"
 import { AppConfig } from "../../../core/config/configService.ts"
 import { Redacted } from "effect"
-import { toHttpError } from "../../../core/errors/httpErrors.ts"
-import type { AppError } from "../../../core/errors/httpErrors.ts"
+import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import { makeMessage } from "../../../infra/ws/wsCodec.ts"
 
 // ── WS fan-out state ──────────────────────────────────────────────────────────
@@ -128,24 +127,17 @@ export const leaderboardRoutes = async (fastify: FastifyInstance): Promise<void>
   }, async (request, reply) => {
     const window = (request.query.window ?? "alltime") as LeaderboardWindow
     const limit = Math.min(parseInt(request.query.limit ?? "100", 10), 500)
-
-    const exit = await request.server.effectRuntime.runPromiseExit(
-      Effect.flatMap(LeaderboardService, (s) => s.getLeaderboard(window, limit))
+    return effectHandler(request, reply,
+      Effect.flatMap(LeaderboardService, (s) => s.getLeaderboard(window, limit)),
+      {
+        transform: (entries, reply) => {
+          void reply.send({
+            success: true,
+            data: { window, entries, count: (entries as Array<unknown>).length },
+          })
+        },
+      },
     )
-
-    if (exit._tag === "Success") {
-      return reply.send({
-        success: true,
-        data: { window, entries: exit.value, count: exit.value.length },
-      })
-    }
-
-    const errResult = Cause.findError(exit.cause)
-    if (Result.isSuccess(errResult)) {
-      const http = toHttpError(errResult.success as AppError)
-      return reply.status(http.statusCode).send(http)
-    }
-    return reply.status(500).send({ success: false, statusCode: 500, message: "Internal server error", data: null })
   })
 
   // ── GET /leaderboard/rank/:userId ────────────────────────────────────────────
@@ -173,16 +165,9 @@ export const leaderboardRoutes = async (fastify: FastifyInstance): Promise<void>
   }, async (request, reply) => {
     const { userId } = request.params
     const window = (request.query.window ?? "alltime") as LeaderboardWindow
-
-    const exit = await request.server.effectRuntime.runPromiseExit(
-      Effect.flatMap(LeaderboardService, (s) => s.getUserRank(window, userId))
+    return effectHandler(request, reply,
+      Effect.flatMap(LeaderboardService, (s) => s.getUserRank(window, userId)),
     )
-
-    if (exit._tag === "Success") {
-      return reply.send({ success: true, data: exit.value })
-    }
-
-    return reply.status(500).send({ success: false, statusCode: 500, message: "Internal server error", data: null })
   })
 
   // ── POST /leaderboard/event ───────────────────────────────────────────────────
@@ -215,8 +200,7 @@ export const leaderboardRoutes = async (fastify: FastifyInstance): Promise<void>
     },
   }, async (request, reply) => {
     const { userId, delta, entityType, entityId, metadata } = request.body
-
-    const exit = await request.server.effectRuntime.runPromiseExit(
+    return effectHandler(request, reply,
       Effect.flatMap(LeaderboardService, (s) =>
         s.recordEvent({
           userId,
@@ -225,14 +209,9 @@ export const leaderboardRoutes = async (fastify: FastifyInstance): Promise<void>
           ...(entityId !== undefined ? { entityId } : {}),
           ...(metadata !== undefined ? { metadata } : {}),
         })
-      )
+      ),
+      { statusCode: 201 },
     )
-
-    if (exit._tag === "Success") {
-      return reply.status(201).send({ success: true, data: exit.value })
-    }
-
-    return reply.status(500).send({ success: false, statusCode: 500, message: "Internal server error", data: null })
   })
 
   // ── WS /leaderboard/ws ────────────────────────────────────────────────────────

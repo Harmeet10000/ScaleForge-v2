@@ -12,29 +12,11 @@
  */
 
 import type { FastifyInstance } from "fastify"
-import { Effect, Cause, Result } from "effect"
+import { Effect } from "effect"
 import { SearchService } from "./searchService.ts"
 import { requireAuth } from "../auth2/authMiddleware.ts"
-import { toHttpError } from "../../../core/errors/httpErrors.ts"
+import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import type { AppError } from "../../../core/errors/httpErrors.ts"
-
-// ── Helper: run Effect and map to HTTP response ───────────────────────────────
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const runSearch = async <A>(
-  fastify: FastifyInstance,
-  // R is provided by effectRuntime — `any` avoids the exactOptionalPropertyTypes constraint
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  effect: Effect.Effect<A, AppError, any>,
-) => {
-  const exit = await fastify.effectRuntime.runPromiseExit(effect as Effect.Effect<A, AppError, never>)
-  if (exit._tag === "Success") return { ok: true as const, value: exit.value }
-  const errResult = Cause.findError(exit.cause)
-  if (Result.isSuccess(errResult)) {
-    return { ok: false as const, http: toHttpError(errResult.success as AppError) }
-  }
-  return { ok: false as const, http: { success: false, statusCode: 500, message: "Internal server error", data: null } as const }
-}
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
 
@@ -70,12 +52,10 @@ export const searchRoutes = async (fastify: FastifyInstance): Promise<void> => {
       },
     },
   }, async (request, reply) => {
-    const res = await runSearch(
-      fastify,
-      Effect.flatMap(SearchService, (s) => s.ingestDocument(request.body) as Effect.Effect<unknown, AppError>)
+    return effectHandler(request, reply,
+      Effect.flatMap(SearchService, (s) => s.ingestDocument(request.body)) as Effect.Effect<unknown, AppError, never>,
+      { statusCode: 202 },
     )
-    if (!res.ok) return reply.status(res.http!.statusCode).send(res.http)
-    return reply.status(202).send({ success: true, data: res.value })
   })
 
   // ── GET /ingest/:jobId ──────────────────────────────────────────────────────
@@ -92,12 +72,9 @@ export const searchRoutes = async (fastify: FastifyInstance): Promise<void> => {
       },
     },
   }, async (request, reply) => {
-    const res = await runSearch(
-      fastify,
-      Effect.flatMap(SearchService, (s) => s.getJobStatus(request.params.jobId) as Effect.Effect<unknown, AppError>)
+    return effectHandler(request, reply,
+      Effect.flatMap(SearchService, (s) => s.getJobStatus(request.params.jobId)) as Effect.Effect<unknown, AppError, never>,
     )
-    if (!res.ok) return reply.status(res.http!.statusCode).send(res.http)
-    return reply.send({ success: true, data: res.value })
   })
 
   // ── POST /hybrid ────────────────────────────────────────────────────────────
@@ -132,16 +109,15 @@ export const searchRoutes = async (fastify: FastifyInstance): Promise<void> => {
       },
     },
   }, async (request, reply) => {
-    const res = await runSearch(
-      fastify,
-      Effect.flatMap(SearchService, (s) => s.hybridSearch(request.body) as Effect.Effect<unknown, AppError>)
+    return effectHandler(request, reply,
+      Effect.flatMap(SearchService, (s) => s.hybridSearch(request.body)) as Effect.Effect<unknown, AppError, never>,
+      {
+        transform: (results, reply) => {
+          const arr = results as Array<unknown>
+          void reply.send({ success: true, data: { results: arr, count: arr.length } })
+        },
+      },
     )
-    if (!res.ok) return reply.status(res.http!.statusCode).send(res.http)
-    const results = res.value as Array<unknown>
-    return reply.send({
-      success: true,
-      data: { results, count: results.length },
-    })
   })
 
   // ── POST /suggest ───────────────────────────────────────────────────────────
@@ -165,13 +141,15 @@ export const searchRoutes = async (fastify: FastifyInstance): Promise<void> => {
       },
     },
   }, async (request, reply) => {
-    const res = await runSearch(
-      fastify,
-      Effect.flatMap(SearchService, (s) => s.suggest(request.body) as Effect.Effect<unknown, AppError>)
+    return effectHandler(request, reply,
+      Effect.flatMap(SearchService, (s) => s.suggest(request.body)) as Effect.Effect<unknown, AppError, never>,
+      {
+        transform: (suggestions, reply) => {
+          const arr = suggestions as Array<unknown>
+          void reply.send({ success: true, data: { suggestions: arr, count: arr.length } })
+        },
+      },
     )
-    if (!res.ok) return reply.status(res.http!.statusCode).send(res.http)
-    const suggestions = res.value as Array<unknown>
-    return reply.send({ success: true, data: { suggestions, count: suggestions.length } })
   })
 
   // ── DELETE /document/:documentId ────────────────────────────────────────────
@@ -199,14 +177,14 @@ export const searchRoutes = async (fastify: FastifyInstance): Promise<void> => {
     const { documentId } = request.params
     const { tenantId } = request.query
 
-    const res = await runSearch(
-      fastify,
-      Effect.flatMap(SearchService, (s) =>
-        s.deleteDocument(documentId, tenantId) as Effect.Effect<unknown, AppError>
-      )
+    return effectHandler(request, reply,
+      Effect.flatMap(SearchService, (s) => s.deleteDocument(documentId, tenantId)) as Effect.Effect<unknown, AppError, never>,
+      {
+        transform: (_, reply, req) => {
+          void reply.send({ success: true, data: { deleted: true, documentId: (req.params as { documentId: string }).documentId } })
+        },
+      },
     )
-    if (!res.ok) return reply.status(res.http!.statusCode).send(res.http)
-    return reply.send({ success: true, data: { deleted: true, documentId } })
   })
 
   // ── GET /health ─────────────────────────────────────────────────────────────
@@ -216,16 +194,14 @@ export const searchRoutes = async (fastify: FastifyInstance): Promise<void> => {
       tags: ["Search"],
       summary: "Search extension availability check",
     },
-  }, async (_request, reply) => {
-    const exit = await fastify.effectRuntime.runPromiseExit(
-      Effect.flatMap(SearchService, (s) => s.healthCheck())
+  }, async (request, reply) => {
+    return effectHandler(request, reply,
+      Effect.flatMap(SearchService, (s) => s.healthCheck()) as unknown as Effect.Effect<unknown, AppError, never>,
+      {
+        transform: (data, reply) => {
+          void reply.status((data as { healthy: boolean }).healthy ? 200 : 503).send({ success: (data as { healthy: boolean }).healthy, data })
+        },
+      },
     )
-    if (exit._tag === "Success") {
-      const data = exit.value
-      return reply
-        .status(data.healthy ? 200 : 503)
-        .send({ success: data.healthy, data })
-    }
-    return reply.status(503).send({ success: false, data: null })
   })
 }
