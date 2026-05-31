@@ -8,18 +8,16 @@
  * GET  /api/v1/auth/me
  *
  * Refresh token strategy:
- *   - Stored in httpOnly; Secure; SameSite=Strict cookie named "rt"
- *   - Cookie is scoped to /api/v1/auth to minimise exposure surface
- *   - Body field `refreshToken` accepted as fallback (API clients / mobile)
- *   - On logout the cookie is cleared server-side
+ *   - httpOnly Secure SameSite=Strict cookie "rt", scoped to /api/v1/auth
+ *   - Body field `refreshToken` accepted as fallback (API/mobile clients)
  */
 
-import type { FastifyInstance, FastifyReply, FastifyRequest, CookieSerializeOptions } from "fastify"
-import { Effect, Schema, Cause, Result } from "effect"
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify"
+import type { CookieSerializeOptions } from "@fastify/cookie"
+import { Effect, Schema, Result } from "effect"
 import { AuthService } from "./authService.ts"
 import { requireAuth } from "./authMiddleware.ts"
-import { toHttpError } from "../../../core/errors/httpErrors.ts"
-import type { AppError } from "../../../core/errors/httpErrors.ts"
+import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 
 // ── Cookie config ─────────────────────────────────────────────────────────────
 
@@ -30,7 +28,7 @@ const refreshCookieOptions: CookieSerializeOptions = {
   secure: process.env["NODE_ENV"] === "production",
   sameSite: "strict",
   path: "/api/v1/auth",
-  maxAge: 60 * 60 * 24 * 7, // 7 days — matches refresh token TTL
+  maxAge: 60 * 60 * 24 * 7,
 }
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
@@ -46,7 +44,6 @@ const LoginBody = Schema.Struct({
   password: Schema.String,
 })
 
-// refreshToken body field is optional — cookie is the primary transport.
 const RefreshBody = Schema.Struct({
   refreshToken: Schema.optional(Schema.NonEmptyString),
 })
@@ -68,129 +65,95 @@ const decodeRefresh = (body: unknown) => {
   return Result.isSuccess(result) ? result.success : null
 }
 
-// ── Helper: resolve refresh token from cookie or body ────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 const resolveRefreshToken = (req: FastifyRequest, body: { refreshToken?: string }): string | null =>
   req.cookies[REFRESH_COOKIE] ?? body.refreshToken ?? null
 
-// ── Helper: run AuthService effect → HTTP response ────────────────────────────
-
-const runAuth = async <A>(
-  fastify: FastifyInstance,
-  reply: FastifyReply,
-  effect: Effect.Effect<A, AppError, AuthService>
-) => {
-  const exit = await fastify.effectRuntime.runPromiseExit(
-    AuthService.pipe(Effect.flatMap(() => effect))
-  )
-  if (exit._tag === "Success") {
-    return reply.status(200).send({ success: true, statusCode: 200, message: "OK", data: exit.value })
-  }
-  const errorResult = Cause.findError(exit.cause)
-  if (Result.isSuccess(errorResult)) {
-    const http = toHttpError(errorResult.success as AppError)
-    return reply.status(http.statusCode).send(http)
-  }
-  return reply.status(500).send({ success: false, statusCode: 500, message: "Internal server error", data: null })
+const badRequest = async (reply: FastifyReply, message: string): Promise<void> => {
+  void reply.status(400).send({ success: false, statusCode: 400, message, data: null })
 }
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 
 export const authRoutes = async (fastify: FastifyInstance) => {
-  // POST /api/v1/auth/register
+  // POST /register
   fastify.post("/auth/register", {
     schema: { tags: ["Auth"], summary: "Register a new user" },
   }, async (req, reply) => {
     const body = decodeRegister(req.body)
-    if (!body) return reply.status(400).send({ success: false, statusCode: 400, message: "Invalid request body", data: null })
-    return runAuth(fastify, reply,
-      Effect.flatMap(AuthService, (s) => s.register(body))
+    if (!body) return badRequest(reply, "Invalid request body")
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.register(body)),
+      { statusCode: 201 },
     )
   })
 
-  // POST /api/v1/auth/login — returns access token in body; refresh token in cookie
+  // POST /login
   fastify.post("/auth/login", {
     schema: { tags: ["Auth"], summary: "Login and receive PASETO tokens" },
   }, async (req, reply) => {
     const body = decodeLogin(req.body)
-    if (!body) return reply.status(400).send({ success: false, statusCode: 400, message: "Invalid request body", data: null })
-
-    const exit = await fastify.effectRuntime.runPromiseExit(
-      Effect.flatMap(AuthService, (s) => s.login(body))
+    if (!body) return badRequest(reply, "Invalid request body")
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.login(body)),
+      {
+        transform: ({ tokens, user }, reply) => {
+          void reply.setCookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions)
+          void reply.status(200).send({
+            success: true, statusCode: 200, message: "OK",
+            data: { accessToken: tokens.accessToken, user },
+          })
+        },
+      },
     )
-
-    if (exit._tag === "Success") {
-      const { tokens, user } = exit.value
-      // Refresh token goes in httpOnly cookie; access token in body only
-      void reply.setCookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions)
-      return reply.status(200).send({
-        success: true,
-        statusCode: 200,
-        message: "OK",
-        data: { accessToken: tokens.accessToken, user },
-      })
-    }
-
-    const errorResult = Cause.findError(exit.cause)
-    if (Result.isSuccess(errorResult)) {
-      const http = toHttpError(errorResult.success as AppError)
-      return reply.status(http.statusCode).send(http)
-    }
-    return reply.status(500).send({ success: false, statusCode: 500, message: "Internal server error", data: null })
   })
 
-  // POST /api/v1/auth/refresh — reads refresh token from cookie; body is fallback
+  // POST /refresh
   fastify.post("/auth/refresh", {
     schema: { tags: ["Auth"], summary: "Rotate tokens using a refresh token" },
   }, async (req, reply) => {
-    const body = decodeRefresh(req.body) ?? {}
+    const rawBody = decodeRefresh(req.body)
+    const body: { refreshToken?: string } = rawBody ? { ...(rawBody.refreshToken !== undefined ? { refreshToken: rawBody.refreshToken } : {}) } : {}
     const refreshToken = resolveRefreshToken(req, body)
-    if (!refreshToken) {
-      return reply.status(400).send({ success: false, statusCode: 400, message: "Missing refresh token", data: null })
-    }
-
-    const exit = await fastify.effectRuntime.runPromiseExit(
-      Effect.flatMap(AuthService, (s) => s.refreshTokens(refreshToken))
+    if (!refreshToken) return badRequest(reply, "Missing refresh token")
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.refreshTokens(refreshToken)),
+      {
+        transform: (tokens, reply) => {
+          void reply.setCookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions)
+          void reply.status(200).send({
+            success: true, statusCode: 200, message: "OK",
+            data: { accessToken: tokens.accessToken },
+          })
+        },
+      },
     )
-
-    if (exit._tag === "Success") {
-      const tokens = exit.value
-      // Rotate cookie with the new refresh token
-      void reply.setCookie(REFRESH_COOKIE, tokens.refreshToken, refreshCookieOptions)
-      return reply.status(200).send({
-        success: true,
-        statusCode: 200,
-        message: "OK",
-        data: { accessToken: tokens.accessToken },
-      })
-    }
-
-    const errorResult = Cause.findError(exit.cause)
-    if (Result.isSuccess(errorResult)) {
-      const http = toHttpError(errorResult.success as AppError)
-      return reply.status(http.statusCode).send(http)
-    }
-    return reply.status(500).send({ success: false, statusCode: 500, message: "Internal server error", data: null })
   })
 
-  // POST /api/v1/auth/logout — clears the refresh-token cookie
+  // POST /logout
   fastify.post("/auth/logout", {
     preHandler: [requireAuth],
     schema: { tags: ["Auth"], summary: "Logout (clear session cookie)" },
   }, async (req, reply) => {
-    const userId = req.user!.sub
-    await fastify.effectRuntime.runPromise(
-      Effect.flatMap(AuthService, (s) => s.logout(userId))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userId = (req as unknown as { user?: { sub: string } }).user!.sub
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.logout(userId)),
+      {
+        transform: (_void, reply) => {
+          void reply.clearCookie(REFRESH_COOKIE, { path: refreshCookieOptions.path as string })
+          void reply.status(200).send({ success: true, statusCode: 200, message: "Logged out", data: null })
+        },
+      },
     )
-    void reply.clearCookie(REFRESH_COOKIE, { path: refreshCookieOptions.path })
-    return reply.status(200).send({ success: true, statusCode: 200, message: "Logged out", data: null })
   })
 
-  // GET /api/v1/auth/me
+  // GET /me
   fastify.get("/auth/me", {
     preHandler: [requireAuth],
     schema: { tags: ["Auth"], summary: "Get authenticated user profile" },
   }, async (req, reply) => {
-    return reply.status(200).send({ success: true, statusCode: 200, message: "OK", data: req.user })
+    return reply.status(200).send({ success: true, statusCode: 200, message: "OK", data: (req as unknown as { user?: unknown }).user })
   })
 }
