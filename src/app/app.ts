@@ -28,6 +28,9 @@ import { authRoutes } from "./features/auth2/authRoutes.ts"
 import { leaderboardRoutes } from "./features/leaderboard/leaderboardRoutes.ts"
 import { searchRoutes } from "./features/search2/searchRoutes.ts"
 import { knockBridgeRoutes } from "./features/notifications/knockBridgeRoutes.ts"
+import { auditRoutes } from "./features/audit/auditRoutes.ts"
+import { storageRoutes } from "./features/storage/storageRoutes.ts"
+import { paymentRoutes } from "./features/payments/paymentRoutes.ts"
 
 export const buildApp = async () => {
   const fastify = Fastify({
@@ -117,6 +120,9 @@ export const buildApp = async () => {
     await api.register(leaderboardRoutes)
     await api.register(searchRoutes, { prefix: "/search" })
     await api.register(knockBridgeRoutes)
+    await api.register(auditRoutes)
+    await api.register(storageRoutes)
+    await api.register(paymentRoutes)
   }, { prefix: "/api/v1" })
 
   // 404 fallback

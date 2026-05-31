@@ -27,6 +27,7 @@ import { GeminiServiceLive } from "../infra/gemini/geminiService.ts"
 import { SearchServiceLive } from "../app/features/search2/searchService.ts"
 import { OAuthServiceLive } from "../app/features/auth2/oauthService.ts"
 import { WebhookPublisherLive } from "../infra/webhooks/webhookPublisher.ts"
+import { S3ServiceLive } from "../infra/s3/s3Service.ts"
 
 // ── Infra layer ───────────────────────────────────────────────────────────────
 // All infra services get AppConfig provided once at this boundary.
@@ -97,6 +98,9 @@ const SearchLayer = SearchServiceLive.pipe(
   ))
 )
 
+// S3Service needs AppConfig only (AWS credentials from config)
+const S3Layer = S3ServiceLive.pipe(Layer.provide(AppConfigLive))
+
 // ── Logger layer ──────────────────────────────────────────────────────────────
 // PinoLoggerLayer reads from process.env — no AppConfig dependency needed.
 const LoggerLayer = PinoLoggerLayer
@@ -105,6 +109,7 @@ const LoggerLayer = PinoLoggerLayer
 export const AppLayer = Layer.mergeAll(
   InfraLayer,
   WebhookLayer,
+  S3Layer,
   TokenLayer,
   PwLayer,
   AuthLayer,
