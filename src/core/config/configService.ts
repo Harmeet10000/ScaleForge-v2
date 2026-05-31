@@ -60,6 +60,11 @@ export interface AppConfig {
     readonly clientId: string
     readonly clientSecret: Redacted.Redacted<string>
   }
+  readonly google: {
+    readonly clientId: string
+    readonly clientSecret: Redacted.Redacted<string>
+    readonly redirectUri: string
+  }
 }
 
 export const AppConfig = Context.Service<AppConfig>("@config/AppConfig")
@@ -177,6 +182,15 @@ const make = Effect.gen(function* () {
     Config.withDefault(Redacted.make(""))
   )
 
+  // Google OAuth
+  const googleClientId = yield* Config.string("GOOGLE_CLIENT_ID").pipe(Config.withDefault(""))
+  const googleClientSecret = yield* Config.redacted("GOOGLE_CLIENT_SECRET").pipe(
+    Config.withDefault(Redacted.make(""))
+  )
+  const googleRedirectUri = yield* Config.string("GOOGLE_REDIRECT_URI").pipe(
+    Config.withDefault("http://localhost:3000/api/v1/auth/oauth/google/callback")
+  )
+
   return AppConfig.of({
     port,
     nodeEnv,
@@ -222,6 +236,11 @@ const make = Effect.gen(function* () {
       apiAudience: openfgaApiAudience,
       clientId: openfgaClientId,
       clientSecret: openfgaClientSecret,
+    },
+    google: {
+      clientId: googleClientId,
+      clientSecret: googleClientSecret,
+      redirectUri: googleRedirectUri,
     },
   })
 })
