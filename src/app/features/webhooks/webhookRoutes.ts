@@ -3,13 +3,13 @@ import { Schema } from "effect"
 
 // Schemas
 const CreateWebhookBody = Schema.Struct({
-  url: Schema.String.pipe(Schema.pattern(/^https:\/\/.+/)),
-  events: Schema.Array(Schema.String).pipe(Schema.minItems(1)),
+  url: Schema.String.check(Schema.isPattern(/^https:\/\/.+/)),
+  events: Schema.Array(Schema.String).check(Schema.isNonEmpty()),
 })
 
 const UpdateWebhookBody = Schema.Struct({
-  url: Schema.optionalKey(Schema.String.pipe(Schema.pattern(/^https:\/\/.+/))),
-  events: Schema.optionalKey(Schema.Array(Schema.String).pipe(Schema.minItems(1))),
+  url: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^https:\/\/.+/))),
+  events: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isNonEmpty())),
   enabled: Schema.optionalKey(Schema.Boolean),
 })
 

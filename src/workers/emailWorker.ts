@@ -14,7 +14,7 @@
  * throttle via `bottleneck` or check plan limits. Prefetch=2 is conservative.
  */
 
-import { Effect, ManagedRuntime, Queue, Schema, Layer } from "effect"
+import { Effect, ManagedRuntime, Queue, Result, Schema, Layer } from "effect"
 import closeWithGrace from "close-with-grace"
 import { EmailService } from "../infra/email/emailService.ts"
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
@@ -26,11 +26,11 @@ import { AppConfigLive } from "../core/config/configService.ts"
 // ── Job schema ─────────────────────────────────────────────────────────────────
 
 const EmailJobSchema = Schema.Struct({
-  to: Schema.Array(Schema.String.check(Schema.nonEmpty())),
-  subject: Schema.String.check(Schema.nonEmpty()),
-  html: Schema.String.check(Schema.nonEmpty()),
+  to: Schema.Array(Schema.String.check(Schema.isNonEmpty())),
+  subject: Schema.String.check(Schema.isNonEmpty()),
+  html: Schema.String.check(Schema.isNonEmpty()),
   from: Schema.optionalKey(Schema.String),
-  attempt: Schema.Number.pipe(Schema.int(), Schema.between(0, 5)),
+  attempt: Schema.Number.check(Schema.isInt(), Schema.isBetween({ minimum: 0, maximum: 5 })),
 })
 
 type EmailJob = Schema.Schema.Type<typeof EmailJobSchema>
@@ -55,10 +55,12 @@ const processJob = (
       to: job.to,
       subject: job.subject,
       html: job.html,
-      from: job.from,
+      ...(job.from !== undefined ? { from: job.from } : {}),
     }).pipe(
-      Effect.map(() => ({ ok: true as const })),
-      Effect.catchAll((err) => Effect.succeed({ ok: false as const, error: err })),
+      Effect.match({
+        onSuccess: () => ({ ok: true as const }),
+        onFailure: (err) => ({ ok: false as const, error: err }),
+      }),
     )
 
     if (result.ok) {
@@ -85,8 +87,8 @@ const processJob = (
       yield* nack()
       yield* Effect.logWarning(`[email-worker] retry ${nextAttempt}/${MAX_ATTEMPTS} for "${job.subject}"`)
     }
-  }).pipe(
-    Effect.catchAllCause((cause) =>
+  }  ).pipe(
+    Effect.catchCause((cause) =>
       Effect.gen(function* () {
         yield* Effect.logError(`[email-worker] unhandled failure`, cause)
         yield* nack()
@@ -103,7 +105,7 @@ const workerProgram = Effect.gen(function* () {
   })
 
   yield* Effect.promise(() => health.start())
-  yield* Effect.addFinalizer(() => Effect.promise(() => health.stop()).pipe(Effect.ignoreLogged))
+  yield* Effect.addFinalizer(() => Effect.promise(() => health.stop()).pipe(Effect.ignore))
 
   const msgQueue = yield* consumer.consume({ queue: QUEUE_NAME, prefetch: PREFETCH })
   health.setReady(true)
@@ -114,14 +116,14 @@ const workerProgram = Effect.gen(function* () {
       const msg = yield* Queue.take(msgQueue)
       const decoded = Schema.decodeUnknownResult(EmailJobSchema)(msg.body)
 
-      if (!decoded.success) {
+      if (!Result.isSuccess(decoded)) {
         yield* Effect.logWarning(`[email-worker] invalid job schema`)
         yield* msg.nack()
         return
       }
 
       // Process sequentially (PREFETCH=2 keeps rate down; fork for true concurrency)
-      yield* processJob(decoded.value, msg.ack, msg.nack)
+      yield* processJob(decoded.success, msg.ack, msg.nack)
     }),
   )
 })
@@ -151,7 +153,7 @@ Effect.runFork(
   runtime.runFork(
     workerProgram.pipe(
       Effect.scoped,
-      Effect.catchAllCause((cause) =>
+      Effect.catchCause((cause) =>
         Effect.sync(() => {
           console.error("[email-worker] fatal", cause)
           process.exit(1)
