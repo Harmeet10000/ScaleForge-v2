@@ -8,19 +8,7 @@ import { Context, Effect, Layer, Redacted } from "effect"
 import { Google, generateState, generateCodeVerifier, decodeIdToken } from "arctic"
 import { AppConfig } from "../../../core/config/configService.ts"
 import { InvalidOAuthCredentialsError } from "../../../core/errors/authErrors.ts"
-
-export interface OAuthUserProfile {
-  readonly id: string // Google sub
-  readonly email: string
-  readonly name: string
-  readonly picture: string | null
-}
-
-export interface OAuthFlowStart {
-  readonly authorizationUrl: string
-  readonly state: string
-  readonly codeVerifier: string
-}
+import type { OAuthUserProfile, OAuthFlowStart } from "./authTypes.ts"
 
 export interface OAuthService {
   readonly startGoogleFlow: () => Effect.Effect<OAuthFlowStart, never>
