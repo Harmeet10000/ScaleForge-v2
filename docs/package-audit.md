@@ -21,46 +21,21 @@ Safe to `bun remove` immediately without touching any source file.
 | `reflect-metadata` | OOP decorators; not part of Effect approach |
 | `atomic-sleep` | Busy-wait sleep; no use case |
 | `varlock` | Dep locking tool; not used |
-| `wattpm` | Platformatic plugin manager; not used |
-| `crawlee` | Web scraping; wrong product |
-| `tree-sitter` + `tree-sitter-javascript` | AST parsing; not relevant to a backend API |
-| `node-pty` + `@xterm/xterm` + `@xterm/addon-fit` | Terminal emulator UI; backend API project |
 | `piscina` | Worker threads; superseded by Effect fibers |
-| `ci-info` | CI environment detection; not used |
-| `flatted` | Circular JSON serializer; not used |
 | `clone-deep` | `structuredClone()` is native in Node 17+ / Bun |
-| `fast-deep-equal` | Effect Schema handles structural equality |
-| `xxhashjs` | Hashing; not used anywhere |
-| `simdjson` | Bun's native JSON parser is already SIMD-accelerated |
-| `@pierre/diffs` | Diff utility; not used |
-| `open` | Opens browser/files from CLI; backend API |
-| `ora` | CLI spinner; not relevant |
-| `prompts` | Interactive CLI prompts; not relevant |
-| `which` | Finds executables in PATH; not used |
-| `yargs` | CLI arg parsing; not used |
-| `fast-xml-parser` | 0 uses; add back only if an external API returns XML |
-| `execa` | Subprocess execution; not used |
 | `p-limit` | Superseded by `Effect.all({ concurrency: N })` |
 | `p-map` | Superseded by `Effect.forEach` with concurrency option |
 | `p-retry` | Superseded by `Effect.retry` + `Schedule` |
-| `xstate` | State machines; Effect is the coordination model |
 | `neverthrow` | `Result` type; superseded by `Effect` |
 | `qs` | Fastify handles query parsing natively via its own parser |
-| `busboy` | Transitive dep of `@fastify/multipart`; not a direct dep |
-| `form-data` | Not imported anywhere in new code |
-| `ms` | Not imported directly; used only transiently by other libs |
 | `ajv` | Fastify ships its own bundled AJV instance; not a direct dep |
-| `fast-json-stringify` | Fastify uses this internally; access via `app.serializerCompiler` if ever needed |
 | `ws` (standalone) | `@fastify/websocket` owns `ws` as a transitive dep; remove as direct dep |
-| `@fastify/static` | Not used; no static file serving in scope |
 
 ### Fastify plugins superseded by Effect
 
 | Package | Superseded by |
 |---|---|
 | `@fastify/hotwire` | SSR Hotwire/Turbo; wrong stack entirely |
-| `@fastify/autoload` | We register routes manually (more explicit, no magic) |
-| `@fastify/env` | `Effect.Config` + Bun reads `.env` natively |
 | `@fastify/funky` | Functional helpers; superseded by Effect |
 | `@fastify/middie` | Express middleware compat shim; not needed |
 | `@fastify/express` | Express compat layer; not needed |
@@ -72,7 +47,6 @@ Safe to `bun remove` immediately without touching any source file.
 | `awilix` + `@fastify/awilix` | DI container; superseded by Effect `Layer` |
 | `@kne/fastify-user` | Alpha, never imported, no stability guarantee |
 | `fastify-graceful-shutdown` | We shutdown via `ManagedRuntime.dispose` + SIGTERM handlers |
-| `fastify-cloudflare-turnstile` | CAPTCHA; not in scope |
 | `fastify-axios` | We use `undici` |
 | `fastify-formbody` *(unscoped old)* | Duplicate of `@fastify/formbody` (keep the scoped one) |
 
@@ -124,24 +98,9 @@ Remove each package **when its corresponding feature module is migrated** to Eff
 | `joi` | 6 old `*Validation.ts` files | `effect/Schema` ✅ |
 | `winston` | `utils/logger.ts` | `pino` ✅ |
 | `winston-mongodb` | `utils/logger.ts` | `pino` |
-| `uuid` | `auditService.ts`, `generalHelper.ts` | `@paralleldrive/cuid2` ✅ |
-| `nanoid` | `serverMiddleware.ts` | `@paralleldrive/cuid2` ✅ |
-| `dayjs` | old auth/audit files | `date-fns` (keep, remove `dayjs`) |
-| `colorette` | `utils/logger.ts` | `pino` handles log formatting |
-| `source-map-support` | `utils/logger.ts` | Bun has native source maps |
-| `dotenv-flow` | `config/dotenvConfig.ts` | Bun + `Effect.Config` |
-| `overload-protection` | `serverMiddleware.ts` | `@fastify/under-pressure` |
-| `kafkajs` | `connections/connectKafka.ts` | **Plan is RabbitMQ-only; delete that file** |
-| `node-rdkafka` | commented-out in kafka examples | Same — delete the file |
-| `@platformatic/kafka` | not imported; implied by above | Remove |
-| `rabbitmq-client` | commented-out in `connectRabbitMQ.ts` | `amqplib` ✅ |
-| `rabbitmq-stream-js-client` | not imported anywhere | Remove |
-| `fastify-amqp-async` | not imported anywhere | `RabbitConsumerService` ✅ |
-| `@platformatic/rabbitmq-hooks` | not imported anywhere | Remove |
+|| `kafkajs` | `connections/connectKafka.ts` | **Plan is RabbitMQ-only; delete that file** |
 | `@fastify/jwt` | not imported in any new code | `paseto-ts` ✅ |
 | `@novu/node` | referenced only in legacy notification service | **Replaced by `@knocklabs/node` exclusively** |
-| `@platformatic/job-queue` | not imported in new code | Our Effect-native worker architecture ✅ |
-| `bottleneck` | `serverMiddleware.ts` (old) | Migrate to new code for outbound API rate limiting (see Section 4) |
 
 **Total Section 2 removals: ~31 packages (one-by-one as features migrate)**
 
@@ -204,6 +163,46 @@ Review these before acting on them.
 | `superjson` | Type-preserving JSON for WebSocket payloads. | **Wire in Phase 6.1** alongside `@fastify/websocket` |
 | `@socketsecurity/bun-security-scanner` | Supply chain security scanner for Bun. | **Keep as devDep** — run in CI |
 | `@fastify/sse` | Server-Sent Events. | **Remove** — `@fastify/websocket` covers the real-time use case with better browser support |
+| `wattpm` | Platformatic plugin manager; not used |
+| `crawlee` | Web scraping; wrong product |
+| `xxhashjs` | Hashing; not used anywhere |
+| `tree-sitter` + `tree-sitter-javascript` | AST parsing; not relevant to a backend API |
+| `node-pty` + `@xterm/xterm` + `@xterm/addon-fit` | Terminal emulator UI; backend API project |
+| `fast-json-stringify` | Fastify uses this internally; access via `app.serializerCompiler` if ever needed |
+| `ci-info` | CI environment detection; not used |
+| `flatted` | Circular JSON serializer; not used |
+| `busboy` | Transitive dep of `@fastify/multipart`; not a direct dep |
+| `ms` | Not imported directly; used only transiently by other libs |
+| `fast-deep-equal` | Effect Schema handles structural equality |
+| `@fastify/static` | Not used; no static file serving in scope |
+| `simdjson` | Bun's native JSON parser is already SIMD-accelerated |
+| `@pierre/diffs` | Diff utility; not used |
+| `xstate` | State machines; Effect is the coordination model |
+| `open` | Opens browser/files from CLI; backend API |
+| `form-data` | Not imported anywhere in new code |
+| `execa` | Subprocess execution; not used |
+| `ora` | CLI spinner; not relevant |
+| `fast-xml-parser` | 0 uses; add back only if an external API returns XML |
+| `prompts` | Interactive CLI prompts; not relevant |
+| `which` | Finds executables in PATH; not used |
+| `yargs` | CLI arg parsing; not used |
+| `@fastify/autoload` | We register routes manually (more explicit, no magic) |
+| `@fastify/env` | `Effect.Config` + Bun reads `.env` natively |
+| `fastify-cloudflare-turnstile` | CAPTCHA; not in scope |
+ `uuid` | `auditService.ts`, `generalHelper.ts` | `@paralleldrive/cuid2` ✅ |
+| `nanoid` | `serverMiddleware.ts` | `@paralleldrive/cuid2` ✅ |
+| `dayjs` | old auth/audit files | `date-fns` (keep, remove `dayjs`) |
+| `colorette` | `utils/logger.ts` | `pino` handles log formatting |
+| `source-map-support` | `utils/logger.ts` | Bun has native source maps |
+| `dotenv-flow` | `config/dotenvConfig.ts` | Bun + `Effect.Config` |
+| `overload-protection` | `serverMiddleware.ts` | `@fastify/under-pressure` |
+| `@platformatic/kafka` | not imported; implied by above | Remove |
+| `rabbitmq-client` | commented-out in `connectRabbitMQ.ts` | `amqplib` ✅ |
+| `rabbitmq-stream-js-client` | not imported anywhere | Remove |
+| `fastify-amqp-async` | not imported anywhere | `RabbitConsumerService` ✅ |
+| `@platformatic/rabbitmq-hooks` | not imported anywhere | Remove |
+| `@platformatic/job-queue` | not imported in new code | Our Effect-native worker architecture ✅ |
+| `bottleneck` | `serverMiddleware.ts` (old) | Migrate to new code for outbound API rate limiting (see Section 4) |
 
 ---
 

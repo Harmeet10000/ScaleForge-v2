@@ -1,13 +1,10 @@
-import dotenvFlow from 'dotenv-flow';
-
-// Configure dotenv-flow with Railway-compatible options
-dotenvFlow.config({
-  // Look for .env files in the current working directory
-  path: process.cwd(),
-  // Set default NODE_ENV if not provided
-  default_node_env: 'development',
-  // Don't fail if .env files are missing (useful for Railway and production)
-  silent: true,
-  // Don't override existing environment variables (Railway sets these)
-  override: false
-});
+/**
+ * src/app/config/dotenvConfig.ts
+ *
+ * No-op shim: env loading is handled at runtime.
+ *   - Dev (bun): Bun auto-loads .env automatically.
+ *   - Production (Node 20.6+): start with `node --env-file=.env dist/main.js`
+ *   - Railway / cloud: env vars are injected directly by the platform.
+ *
+ * dotenv-flow has been removed. Use Effect.Config for all config access.
+ */

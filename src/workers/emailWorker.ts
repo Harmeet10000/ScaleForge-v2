@@ -15,6 +15,7 @@
  */
 
 import { Effect, ManagedRuntime, Queue, Schema, Layer } from "effect"
+import closeWithGrace from "close-with-grace"
 import { EmailService } from "../infra/email/emailService.ts"
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
 import { RabbitConsumerService, RabbitConsumerServiceLive } from "./shared/rabbitConsumer.ts"
@@ -135,17 +136,16 @@ const WorkerRootLayer = Layer.mergeAll(
 
 const runtime = ManagedRuntime.make(WorkerRootLayer)
 
-const shutdown = (signal: string) => () => {
-  Effect.runFork(
-    runtime.dispose().pipe(
-      Effect.tap(() => Effect.sync(() => process.exit(0))),
-      Effect.catchAllCause(() => Effect.sync(() => process.exit(1))),
-    ),
-  )
-}
-
-process.on("SIGTERM", shutdown("SIGTERM"))
-process.on("SIGINT", shutdown("SIGINT"))
+// close-with-grace handles SIGTERM + SIGINT + unhandledRejection and gives a
+// 10 s deadline to drain in-flight emails before force-killing the process.
+closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
+  if (err) {
+    console.error("[email-worker] unexpected error — shutting down:", err)
+  } else {
+    console.log(`[email-worker] received ${signal ?? "close"}, shutting down…`)
+  }
+  await Effect.runPromise(runtime.dispose())
+})
 
 Effect.runFork(
   runtime.runFork(

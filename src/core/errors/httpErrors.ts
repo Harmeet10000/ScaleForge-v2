@@ -1,4 +1,4 @@
-import { Match } from "effect"
+import { match } from "ts-pattern"
 import type {
   NotFoundError,
   ValidationError,
@@ -66,60 +66,62 @@ const httpError = (statusCode: number, message: string): HttpErrorResponse => ({
   data: null,
 })
 
+// ts-pattern .exhaustive() compile-fails on missing cases.
+// Note: Effect Match.pipe has a 20-arg overload limit — at 22 cases + Match.exhaustive
+// we exceed that limit, hence ts-pattern here.
 export const toHttpError = (error: AppError): HttpErrorResponse =>
-  Match.value(error).pipe(
-    // Common errors
-    Match.tag("NotFoundError", (e) =>
+  match(error)
+    // ── Common errors ─────────────────────────────────────────────────────────
+    .with({ _tag: "NotFoundError" }, (e) =>
       httpError(404, `${e.resource} not found${e.identifier != null ? `: ${e.identifier}` : ""}`)
-    ),
-    Match.tag("ValidationError", (e) =>
+    )
+    .with({ _tag: "ValidationError" }, (e) =>
       httpError(400, `Validation failed: ${e.field} - ${e.message}`)
-    ),
-    Match.tag("UnauthorizedError", (e) => httpError(401, e.reason ?? "Unauthorized")),
-    Match.tag("ForbiddenError", (e) => httpError(403, e.reason ?? "Forbidden")),
-    Match.tag("ConflictError", (e) =>
+    )
+    .with({ _tag: "UnauthorizedError" }, (e) => httpError(401, e.reason ?? "Unauthorized"))
+    .with({ _tag: "ForbiddenError" }, (e) => httpError(403, e.reason ?? "Forbidden"))
+    .with({ _tag: "ConflictError" }, (e) =>
       httpError(409, `${e.resource} already exists: ${e.identifier}`)
-    ),
-    Match.tag("ExternalServiceError", (e) =>
+    )
+    .with({ _tag: "ExternalServiceError" }, (e) =>
       httpError(502, `External service error: ${e.service}`)
-    ),
-    // Auth errors
-    Match.tag("UserNotFoundError", (e) => httpError(404, `User not found: ${e.identifier}`)),
-    Match.tag("UserAlreadyExistsError", (e) =>
-      httpError(409, `User already exists: ${e.email}`)
-    ),
-    Match.tag("InvalidCredentialsError", () => httpError(401, "Invalid credentials")),
-    Match.tag("AccountNotConfirmedError", (e) =>
-      httpError(403, `Account not confirmed: ${e.email}`)
-    ),
-    Match.tag("AccountAlreadyConfirmedError", (e) =>
-      httpError(409, `Account already confirmed: ${e.email}`)
-    ),
-    Match.tag("InvalidConfirmationCodeError", () => httpError(400, "Invalid confirmation code")),
-    Match.tag("InvalidPhoneNumberError", (e) =>
-      httpError(400, `Invalid phone number: ${e.phoneNumber}`)
-    ),
-    Match.tag("InvalidTimezoneError", (e) =>
-      httpError(400, `Invalid timezone for ISO code: ${e.isoCode}`)
-    ),
-    Match.tag("PasswordResetExpiredError", () =>
-      httpError(410, "Password reset link has expired")
-    ),
-    Match.tag("PasswordSameAsOldError", () =>
-      httpError(400, "New password must be different from old password")
-    ),
-    Match.tag("InvalidOldPasswordError", () => httpError(401, "Invalid old password")),
-    Match.tag("InvalidTokenError", (e) => httpError(401, `Invalid token: ${e.reason}`)),
-    Match.tag("TokenExpiredError", (e) => httpError(401, `${e.tokenType} token has expired`)),
-    Match.tag("InvalidOAuthCredentialsError", (e) =>
-      httpError(401, `Invalid OAuth credentials: ${e.provider}`)
-    ),
-    // Infra errors surfaced to HTTP
-    Match.tag("HealthCheckError", (e) =>
-      httpError(503, `Health check failed: ${e.component}`)
-    ),
-    Match.tag("TooManyRequestsError", (e) =>
+    )
+    .with({ _tag: "TooManyRequestsError" }, (e) =>
       httpError(429, e.retryAfter != null ? `Rate limit exceeded. Retry after ${e.retryAfter}` : "Rate limit exceeded")
-    ),
-    Match.exhaustive
-  )
+    )
+    // ── Auth errors ───────────────────────────────────────────────────────────
+    .with({ _tag: "UserNotFoundError" }, (e) => httpError(404, `User not found: ${e.identifier}`))
+    .with({ _tag: "UserAlreadyExistsError" }, (e) =>
+      httpError(409, `User already exists: ${e.email}`)
+    )
+    .with({ _tag: "InvalidCredentialsError" }, () => httpError(401, "Invalid credentials"))
+    .with({ _tag: "AccountNotConfirmedError" }, (e) =>
+      httpError(403, `Account not confirmed: ${e.email}`)
+    )
+    .with({ _tag: "AccountAlreadyConfirmedError" }, (e) =>
+      httpError(409, `Account already confirmed: ${e.email}`)
+    )
+    .with({ _tag: "InvalidConfirmationCodeError" }, () => httpError(400, "Invalid confirmation code"))
+    .with({ _tag: "InvalidPhoneNumberError" }, (e) =>
+      httpError(400, `Invalid phone number: ${e.phoneNumber}`)
+    )
+    .with({ _tag: "InvalidTimezoneError" }, (e) =>
+      httpError(400, `Invalid timezone for ISO code: ${e.isoCode}`)
+    )
+    .with({ _tag: "PasswordResetExpiredError" }, () =>
+      httpError(410, "Password reset link has expired")
+    )
+    .with({ _tag: "PasswordSameAsOldError" }, () =>
+      httpError(400, "New password must be different from old password")
+    )
+    .with({ _tag: "InvalidOldPasswordError" }, () => httpError(401, "Invalid old password"))
+    .with({ _tag: "InvalidTokenError" }, (e) => httpError(401, `Invalid token: ${e.reason}`))
+    .with({ _tag: "TokenExpiredError" }, (e) => httpError(401, `${e.tokenType} token has expired`))
+    .with({ _tag: "InvalidOAuthCredentialsError" }, (e) =>
+      httpError(401, `Invalid OAuth credentials: ${e.provider}`)
+    )
+    // ── Infra errors surfaced to HTTP ──────────────────────────────────────────
+    .with({ _tag: "HealthCheckError" }, (e) =>
+      httpError(503, `Health check failed: ${e.component}`)
+    )
+    .exhaustive()

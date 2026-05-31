@@ -23,6 +23,7 @@
  */
 
 import { Effect, ManagedRuntime, Queue, Schema, Fiber, Scope, Layer } from "effect"
+import closeWithGrace from "close-with-grace"
 import { eq, sql } from "drizzle-orm"
 import { createId } from "@paralleldrive/cuid2"
 import { PostgresService } from "../infra/postgres/postgresService.ts"
@@ -211,23 +212,16 @@ const WorkerRootLayer = Layer.mergeAll(
 
 const runtime = ManagedRuntime.make(WorkerRootLayer)
 
-const shutdown = (signal: string) => () => {
-  console.log(`[webhook-worker] received ${signal}, shutting down…`)
-  Effect.runFork(
-    runtime.dispose().pipe(
-      Effect.tap(() => Effect.sync(() => process.exit(0))),
-      Effect.catchAllCause((cause) =>
-        Effect.sync(() => {
-          console.error("[webhook-worker] shutdown error", cause)
-          process.exit(1)
-        }),
-      ),
-    ),
-  )
-}
-
-process.on("SIGTERM", shutdown("SIGTERM"))
-process.on("SIGINT", shutdown("SIGINT"))
+// close-with-grace handles SIGTERM + SIGINT + unhandledRejection and gives a
+// 10 s deadline to drain in-flight deliveries before force-killing the process.
+closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
+  if (err) {
+    console.error("[webhook-worker] unexpected error — shutting down:", err)
+  } else {
+    console.log(`[webhook-worker] received ${signal ?? "close"}, shutting down…`)
+  }
+  await Effect.runPromise(runtime.dispose())
+})
 
 Effect.runFork(
   runtime.runFork(
