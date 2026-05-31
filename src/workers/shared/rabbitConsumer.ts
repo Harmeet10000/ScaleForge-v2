@@ -86,7 +86,7 @@ const make = Effect.gen(function* () {
             Effect.tryPromise({
               try: () => conn.close(),
               catch: () => void 0,
-            }).pipe(Effect.ignoreLogged),
+            }).pipe(Effect.ignore),
         )
 
         yield* Effect.tryPromise({

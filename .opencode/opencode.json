@@ -4,15 +4,15 @@
     ".opencode/plugins/graphify.js",
     "@warp-dot-dev/opencode-warp",
     "@mohak34/opencode-notifier@latest",
-        "@zenobius/opencode-skillful",
-        "opencode-scheduler",
-        "opencode-firecrawl",
-        "opencode-conductor-plugin"        
+    "@zenobius/opencode-skillful",
+    "opencode-scheduler",
+    "opencode-firecrawl",
+    "opencode-conductor-plugin"
   ],
-"skills": {
+  "skills": {
     "paths": [
       ".opencode/skills",
-        "/home/harmeet/Desktop/prompts/skills"
+      "/home/harmeet/Desktop/prompts/skills"
     ]
   },
   "permission": {
@@ -35,4 +35,5 @@
     "question": "allow",
     "skill": "allow",
     "webfetch": "allow"
+  }
 }

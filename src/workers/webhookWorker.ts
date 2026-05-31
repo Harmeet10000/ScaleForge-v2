@@ -1,6 +1,26 @@
-import { createHmac } from "node:crypto"
+/**
+ * src/workers/webhookWorker.ts
+ *
+ * Core webhook delivery logic.
+ *
+ * Signs outbound payloads using the Standard Webhooks spec (HMAC-SHA256).
+ * Consumers verify with:
+ *   const wh = new Webhook(secret)
+ *   wh.verify(body, headers)
+ *
+ * Standard Webhooks headers:
+ *   webhook-id        — unique delivery ID (idempotency key)
+ *   webhook-timestamp — Unix epoch seconds (replay protection)
+ *   webhook-signature — "v1,<base64-HMAC-SHA256>" (one or more comma-separated)
+ *
+ * Additional ScaleForge routing headers (convenience, not part of the spec):
+ *   x-scaleforge-event    — event name
+ *   x-scaleforge-delivery — same as webhook-id
+ */
+
 import { Effect } from "effect"
 import { request } from "undici"
+import { Webhook } from "standardwebhooks"
 import { RabbitMQPublishError } from "../core/errors/infraErrors.ts"
 
 export interface WebhookJob {
@@ -20,23 +40,29 @@ export const MAX_ATTEMPTS = BACKOFF_DELAYS_SECS.length
 export const nextRetryDelaySecs = (attempt: number): number =>
   BACKOFF_DELAYS_SECS[attempt] ?? BACKOFF_DELAYS_SECS[BACKOFF_DELAYS_SECS.length - 1]!
 
-const buildSignature = (secret: string, body: string): string =>
-  `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`
-
 export const deliverWebhook = (job: WebhookJob) =>
   Effect.gen(function* () {
     const body = JSON.stringify({ event: job.event, data: job.payload })
-    const signature = buildSignature(job.secret, body)
+
+    // Standard Webhooks signing — compatible with GitHub, Stripe, Svix consumers
+    const wh = new Webhook(job.secret)
+    const timestamp = new Date()
+    const signature = wh.sign(job.deliveryId, timestamp, body)
+    const timestampSecs = Math.floor(timestamp.getTime() / 1000).toString()
 
     const { statusCode } = yield* Effect.tryPromise({
       try: () =>
         request(job.url, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
-            "X-ScaleForge-Signature": signature,
-            "X-ScaleForge-Event": job.event,
-            "X-ScaleForge-Delivery": job.deliveryId,
+            "content-type": "application/json",
+            // Standard Webhooks spec headers
+            "webhook-id": job.deliveryId,
+            "webhook-timestamp": timestampSecs,
+            "webhook-signature": signature,
+            // ScaleForge routing convenience headers
+            "x-scaleforge-event": job.event,
+            "x-scaleforge-delivery": job.deliveryId,
           },
           body,
         }),

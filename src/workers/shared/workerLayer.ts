@@ -6,7 +6,7 @@
  * Keeps startup fast and memory small for process-per-worker deployment.
  *
  * Dependency order (LIFO finalizer order):
- *   AppConfig → Postgres → Redis → RabbitMQ → Email → Metrics → Tracing → Logger
+ *   AppConfig → Postgres → Redis → RabbitMQ → Email → Metrics → Tracing → Logger → WebhookPublisher
  */
 
 import { Layer } from "effect"
@@ -18,6 +18,7 @@ import { EmailServiceLive } from "../../infra/email/emailService.ts"
 import { PinoLoggerLayer } from "../../infra/logger/pinoLogger.ts"
 import { MetricsServiceLive } from "../../infra/telemetry/metricsService.ts"
 import { TracingServiceLive } from "../../infra/telemetry/tracingService.ts"
+import { WebhookPublisherLive } from "../../infra/webhooks/webhookPublisher.ts"
 
 // Each service needs AppConfig provided at its layer boundary.
 const PostgresLayer = PostgresServiceLive.pipe(Layer.provide(AppConfigLive))
@@ -27,6 +28,11 @@ const EmailLayer = EmailServiceLive.pipe(Layer.provide(AppConfigLive))
 const MetricsLayer = MetricsServiceLive
 const TracingLayer = TracingServiceLive.pipe(Layer.provide(AppConfigLive))
 const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
+
+// WebhookPublisher needs both Postgres and RabbitMQ (already provided via AppConfig)
+const WebhookPublisherLayer = WebhookPublisherLive.pipe(
+  Layer.provide(Layer.merge(PostgresLayer, RabbitMQLayer)),
+)
 
 /**
  * WorkerLayer — the single composed layer for all worker processes.
@@ -42,4 +48,5 @@ export const WorkerLayer = Layer.mergeAll(
   MetricsLayer,
   TracingLayer,
   LoggerLayer,
+  WebhookPublisherLayer,
 )

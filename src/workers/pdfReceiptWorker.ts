@@ -21,6 +21,7 @@ import PDFDocument from "pdfkit"
 import { eq } from "drizzle-orm"
 import { PostgresService } from "../infra/postgres/postgresService.ts"
 import { S3Service, S3ServiceLive } from "../infra/s3/s3Service.ts"
+import { WebhookPublisher } from "../infra/webhooks/webhookPublisher.ts"
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
 import { RabbitConsumerService, RabbitConsumerServiceLive } from "./shared/rabbitConsumer.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
@@ -205,9 +206,12 @@ const processJob = (
           })
           .where(eq(payments.id, job.paymentId)),
       catch: (e) => e,
-    }).pipe(Effect.ignoreLogged)
+    }).pipe(Effect.ignore)
 
     yield* ack()
+    yield* Effect.flatMap(WebhookPublisher, p =>
+      p.emit('receipt.generated', { paymentId: job.paymentId, userId: job.userId, s3Key })
+    ).pipe(Effect.ignore)
     yield* Effect.log(`[pdf-worker] receipt generated for ${job.paymentId} → ${s3Key}`)
   }).pipe(
     Effect.catchAllCause((cause) =>
@@ -227,7 +231,7 @@ const workerProgram = Effect.gen(function* () {
   })
 
   yield* Effect.promise(() => health.start())
-  yield* Effect.addFinalizer(() => Effect.promise(() => health.stop()).pipe(Effect.ignoreLogged))
+  yield* Effect.addFinalizer(() => Effect.promise(() => health.stop()).pipe(Effect.ignore))
 
   const msgQueue = yield* consumer.consume({ queue: QUEUE_NAME, prefetch: PREFETCH })
   health.setReady(true)

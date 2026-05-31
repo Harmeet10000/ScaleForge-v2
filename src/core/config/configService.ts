@@ -65,6 +65,9 @@ export interface AppConfig {
     readonly clientSecret: Redacted.Redacted<string>
     readonly redirectUri: string
   }
+  readonly knock: {
+    readonly webhookSecret: Redacted.Redacted<string>
+  }
 }
 
 export const AppConfig = Context.Service<AppConfig>("@config/AppConfig")
@@ -191,6 +194,11 @@ const make = Effect.gen(function* () {
     Config.withDefault("http://localhost:3000/api/v1/auth/oauth/google/callback")
   )
 
+  // Knock
+  const knockWebhookSecret = yield* Config.redacted("KNOCK_WEBHOOK_SECRET").pipe(
+    Config.withDefault(Redacted.make(""))
+  )
+
   return AppConfig.of({
     port,
     nodeEnv,
@@ -241,6 +249,9 @@ const make = Effect.gen(function* () {
       clientId: googleClientId,
       clientSecret: googleClientSecret,
       redirectUri: googleRedirectUri,
+    },
+    knock: {
+      webhookSecret: knockWebhookSecret,
     },
   })
 })

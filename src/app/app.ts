@@ -27,6 +27,7 @@ import { webhookRoutes } from "./features/webhooks/webhookRoutes.ts"
 import { authRoutes } from "./features/auth2/authRoutes.ts"
 import { leaderboardRoutes } from "./features/leaderboard/leaderboardRoutes.ts"
 import { searchRoutes } from "./features/search2/searchRoutes.ts"
+import { knockBridgeRoutes } from "./features/notifications/knockBridgeRoutes.ts"
 
 export const buildApp = async () => {
   const fastify = Fastify({
@@ -115,6 +116,7 @@ export const buildApp = async () => {
     await api.register(webhookRoutes)
     await api.register(leaderboardRoutes)
     await api.register(searchRoutes, { prefix: "/search" })
+    await api.register(knockBridgeRoutes)
   }, { prefix: "/api/v1" })
 
   // 404 fallback

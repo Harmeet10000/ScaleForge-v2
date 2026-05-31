@@ -41,6 +41,9 @@ const TestAppConfigLayer = Layer.succeed(AppConfig, AppConfig.of({
   email: { resendKey: Redacted.make("") },
   novu: { apiKey: Redacted.make("") },
   observability: { lokiHost: "" },
+  openfga: { apiUrl: "", storeId: "", authorizationModelId: "", clientId: "", clientSecret: "", apiAudience: "", apiTokenIssuer: "" },
+  google: { clientId: Redacted.make(""), clientSecret: Redacted.make("") },
+  knock: { webhookSecret: Redacted.make("") },
 }))
 
 const TestTokenLayer = TokenServiceLive.pipe(Layer.provide(TestAppConfigLayer))

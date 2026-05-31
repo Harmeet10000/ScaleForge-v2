@@ -48,7 +48,7 @@ const make = Effect.gen(function* () {
       Effect.tryPromise({
         try: () => connection.close(),
         catch: () => void 0,
-      }).pipe(Effect.ignoreLogged)
+      }).pipe(Effect.ignore)
   )
 
   let connected = true

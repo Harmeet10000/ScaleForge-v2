@@ -34,7 +34,7 @@ const make = Effect.gen(function* () {
       Effect.tryPromise({
         try: () => mongoose.disconnect(),
         catch: () => void 0,
-      }).pipe(Effect.ignoreLogged)
+      }).pipe(Effect.ignore)
   )
 
   return MongoService.of({

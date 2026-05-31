@@ -22,6 +22,7 @@
 import { Effect, ManagedRuntime, Queue, Schema, Result, Fiber, Layer } from "effect"
 import closeWithGrace from "close-with-grace"
 import { LeaderboardService, LeaderboardServiceLive } from "../app/features/leaderboard/leaderboardService.ts"
+import { WebhookPublisher } from "../infra/webhooks/webhookPublisher.ts"
 import { RabbitConsumerService, RabbitConsumerServiceLive } from "./shared/rabbitConsumer.ts"
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
@@ -65,6 +66,14 @@ const processMessage = (
     })
 
     yield* ack()
+    yield* Effect.flatMap(WebhookPublisher, p =>
+      p.emit('leaderboard.score.updated', {
+        userId: msg.userId,
+        delta: msg.delta,
+        entityType: msg.entityType,
+        entityId: msg.entityId,
+      })
+    ).pipe(Effect.ignore)
     yield* Effect.log(
       `[leaderboard-worker] recorded event userId=${msg.userId} delta=${msg.delta} entity=${msg.entityType}`
     )

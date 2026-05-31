@@ -70,7 +70,7 @@ const markDelivered = (deliveryId: string, statusCode: number) =>
           })
           .where(eq(webhookDeliveries.id, deliveryId)),
       catch: (e) => e,
-    }).pipe(Effect.ignoreLogged)
+    }).pipe(Effect.ignore)
   })
 
 const markFailed = (deliveryId: string, statusCode: number | null, attempt: number) =>
@@ -94,7 +94,7 @@ const markFailed = (deliveryId: string, statusCode: number | null, attempt: numb
           })
           .where(eq(webhookDeliveries.id, deliveryId)),
       catch: (e) => e,
-    }).pipe(Effect.ignoreLogged)
+    }).pipe(Effect.ignore)
   })
 
 // ── Message processor ─────────────────────────────────────────────────────────
@@ -156,7 +156,7 @@ const workerProgram = Effect.gen(function* () {
   yield* Effect.log(`[webhook-worker] health server on :${(server.address() as { port: number }).port}`)
 
   yield* Effect.addFinalizer(() =>
-    Effect.promise(() => health.stop()).pipe(Effect.ignoreLogged),
+    Effect.promise(() => health.stop()).pipe(Effect.ignore),
   )
 
   // Create the consumer queue (scoped to this Effect's scope)

@@ -17,6 +17,7 @@
 import { Effect, ManagedRuntime, Queue, Result, Schema, Layer } from "effect"
 import closeWithGrace from "close-with-grace"
 import { EmailService } from "../infra/email/emailService.ts"
+import { WebhookPublisher } from "../infra/webhooks/webhookPublisher.ts"
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
 import { RabbitConsumerService, RabbitConsumerServiceLive } from "./shared/rabbitConsumer.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
@@ -65,6 +66,9 @@ const processJob = (
 
     if (result.ok) {
       yield* ack()
+      yield* Effect.flatMap(WebhookPublisher, p =>
+        p.emit('email.sent', { to: job.to, subject: job.subject })
+      ).pipe(Effect.ignore)
       yield* Effect.log(`[email-worker] sent to ${job.to.join(",")} — "${job.subject}"`)
       return
     }
