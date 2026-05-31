@@ -7,6 +7,8 @@ export interface RedisService {
   readonly client: Redis
   readonly get: (key: string) => Effect.Effect<string | null, RedisCommandError>
   readonly set: (key: string, value: string, ttl?: number) => Effect.Effect<"OK" | null, RedisCommandError>
+  readonly getBuffer: (key: string) => Effect.Effect<Buffer | null, RedisCommandError>
+  readonly setBuffer: (key: string, value: Buffer, ttl?: number) => Effect.Effect<"OK" | null, RedisCommandError>
   readonly del: (key: string) => Effect.Effect<number, RedisCommandError>
   readonly hget: (key: string, field: string) => Effect.Effect<string | null, RedisCommandError>
   readonly hset: (key: string, field: string, value: string, ttl?: number) => Effect.Effect<void, RedisCommandError>
@@ -48,7 +50,7 @@ const make = Effect.gen(function* () {
       Effect.tryPromise({
         try: () => redis.quit(),
         catch: () => void 0,
-      }).pipe(Effect.ignoreLogged)
+      }).pipe(Effect.ignore)
   )
 
   return RedisService.of({
@@ -62,6 +64,16 @@ const make = Effect.gen(function* () {
       Effect.tryPromise({
         try: () => (ttl != null ? client.set(key, value, "EX", ttl) : client.set(key, value)),
         catch: (error) => new RedisCommandError({ command: "SET", cause: error }),
+      }),
+    getBuffer: (key) =>
+      Effect.tryPromise({
+        try: () => client.getBuffer(key),
+        catch: (error) => new RedisCommandError({ command: "GETBUFFER", cause: error }),
+      }),
+    setBuffer: (key, value, ttl) =>
+      Effect.tryPromise({
+        try: () => (ttl != null ? client.set(key, value, "EX", ttl) : client.set(key, value)),
+        catch: (error) => new RedisCommandError({ command: "SETBUFFER", cause: error }),
       }),
     del: (key) =>
       Effect.tryPromise({

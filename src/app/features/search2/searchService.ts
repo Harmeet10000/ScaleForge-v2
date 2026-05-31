@@ -39,6 +39,7 @@ import {
   type SuggestResultRow,
 } from "./searchRepository.ts"
 import { normalizeText, sha256Hex } from "./searchChunking.ts"
+import { encodeRedis, decodeRedis } from "../../../infra/redis/redisCodec.ts"
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -220,9 +221,9 @@ const make = Effect.gen(function* () {
       )
 
       // Track job status in Redis
-      yield* redis.set(
+      yield* redis.setBuffer(
         buildJobKey(jobId),
-        JSON.stringify({ status: "queued", documentId }),
+        encodeRedis({ status: "queued", documentId }),
         86400, // 24h TTL
       ).pipe(Effect.ignore)
 
@@ -254,11 +255,11 @@ const make = Effect.gen(function* () {
           buildCacheKey(input).catch(() => null as string | null)
         )
         if (cacheKey !== null) {
-          const cached = yield* redis.get(cacheKey).pipe(
-            Effect.orElseSucceed(() => null as string | null)
+          const cached = yield* redis.getBuffer(cacheKey).pipe(
+            Effect.orElseSucceed(() => null as Buffer | null)
           )
           if (cached !== null) {
-            return JSON.parse(cached) as SearchResultRow[]
+            return decodeRedis<SearchResultRow[]>(cached)
           }
         }
       }
@@ -290,7 +291,7 @@ const make = Effect.gen(function* () {
           buildCacheKey(input).catch(() => null as string | null)
         )
         if (cacheKey !== null) {
-          yield* redis.set(cacheKey, JSON.stringify(results), CACHE_TTL).pipe(Effect.ignore)
+          yield* redis.setBuffer(cacheKey, encodeRedis(results), CACHE_TTL).pipe(Effect.ignore)
         }
       }
 
@@ -330,13 +331,13 @@ const make = Effect.gen(function* () {
 
   const getJobStatus = (jobId: string) =>
     Effect.gen(function* () {
-      const raw = yield* redis.get(buildJobKey(jobId)).pipe(
-        Effect.orElseSucceed(() => null as string | null)
+      const raw = yield* redis.getBuffer(buildJobKey(jobId)).pipe(
+        Effect.orElseSucceed(() => null as Buffer | null)
       )
       if (raw === null) {
         return yield* Effect.fail(new SearchJobNotFoundError({ jobId }))
       }
-      const parsed = JSON.parse(raw) as Omit<JobStatus, "jobId">
+      const parsed = decodeRedis<Omit<JobStatus, "jobId">>(raw)
       return { jobId, ...parsed } satisfies JobStatus
     })
 
