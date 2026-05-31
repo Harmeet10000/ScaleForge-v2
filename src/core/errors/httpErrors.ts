@@ -29,6 +29,12 @@ import type {
   ApiKeyInvalidError,
 } from "./authErrors.ts"
 import type { HealthCheckError } from "./infraErrors.ts"
+import type {
+  SearchDocumentNotFoundError,
+  SearchQueryTooLongError,
+  SearchTenantRequiredError,
+  SearchJobNotFoundError,
+} from "../../app/features/search2/searchErrors.ts"
 
 export interface HttpErrorResponse {
   readonly success: false
@@ -66,6 +72,10 @@ export type AppError =
   | ApiKeyExpiredError
   | ApiKeyRevokedError
   | ApiKeyInvalidError
+  | SearchDocumentNotFoundError
+  | SearchQueryTooLongError
+  | SearchTenantRequiredError
+  | SearchJobNotFoundError
 
 const httpError = (statusCode: number, message: string): HttpErrorResponse => ({
   success: false,
@@ -137,4 +147,17 @@ export const toHttpError = (error: AppError): HttpErrorResponse =>
     .with({ _tag: "ApiKeyExpiredError" }, () => httpError(401, "API key has expired"))
     .with({ _tag: "ApiKeyRevokedError" }, () => httpError(401, "API key has been revoked"))
     .with({ _tag: "ApiKeyInvalidError" }, (e) => httpError(401, `Invalid API key: ${e.reason}`))
+    // ── Search errors ─────────────────────────────────────────────────────────
+    .with({ _tag: "SearchDocumentNotFoundError" }, (e) =>
+      httpError(404, `Search document not found: ${e.documentId}`)
+    )
+    .with({ _tag: "SearchQueryTooLongError" }, (e) =>
+      httpError(400, `Search query too long: ${e.length} chars (max ${e.maxLength})`)
+    )
+    .with({ _tag: "SearchTenantRequiredError" }, () =>
+      httpError(400, "tenantId is required for search")
+    )
+    .with({ _tag: "SearchJobNotFoundError" }, (e) =>
+      httpError(404, `Search job not found: ${e.jobId}`)
+    )
     .exhaustive()

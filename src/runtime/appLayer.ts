@@ -24,6 +24,7 @@ import { ApiKeyServiceLive } from "../app/features/auth2/apiKeyService.ts"
 import { LeaderboardServiceLive } from "../app/features/leaderboard/leaderboardService.ts"
 import { OpenFgaServiceLive } from "../app/features/authz/openFgaService.ts"
 import { GeminiServiceLive } from "../infra/gemini/geminiService.ts"
+import { SearchServiceLive } from "../app/features/search2/searchService.ts"
 
 // ── Infra layer ───────────────────────────────────────────────────────────────
 // All infra services get AppConfig provided once at this boundary.
@@ -75,6 +76,16 @@ const FgaLayer = OpenFgaServiceLive.pipe(Layer.provide(AppConfigLive))
 // GeminiService needs AppConfig only (HTTP client, no DB)
 const GeminiLayer = GeminiServiceLive.pipe(Layer.provide(AppConfigLive))
 
+// SearchService needs Postgres + Redis + Gemini + RabbitMQ
+const SearchLayer = SearchServiceLive.pipe(
+  Layer.provide(Layer.mergeAll(
+    PostgresServiceLive.pipe(Layer.provide(AppConfigLive)),
+    RedisServiceLive.pipe(Layer.provide(AppConfigLive)),
+    GeminiServiceLive.pipe(Layer.provide(AppConfigLive)),
+    RabbitMQServiceLive.pipe(Layer.provide(AppConfigLive)),
+  ))
+)
+
 // ── Logger layer ──────────────────────────────────────────────────────────────
 const LoggerLayer = PinoLoggerLayer.pipe(Layer.provide(AppConfigLive))
 
@@ -88,5 +99,6 @@ export const AppLayer = Layer.mergeAll(
   LeaderboardLayer,
   FgaLayer,
   GeminiLayer,
+  SearchLayer,
   LoggerLayer,
 )
