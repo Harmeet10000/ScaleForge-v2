@@ -65,6 +65,45 @@ const decodeRefresh = (body: unknown) => {
   return Result.isSuccess(result) ? result.success : null
 }
 
+const ConfirmAccountQuery = Schema.Struct({
+  email: Schema.NonEmptyString,
+  code: Schema.NonEmptyString,
+})
+
+const ForgotPasswordBody = Schema.Struct({
+  email: Schema.String.check(Schema.isPattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)),
+})
+
+const ResetPasswordBody = Schema.Struct({
+  token: Schema.NonEmptyString,
+  newPassword: Schema.String.check(Schema.isMinLength(8)),
+})
+
+const ChangePasswordBody = Schema.Struct({
+  oldPassword: Schema.NonEmptyString,
+  newPassword: Schema.String.check(Schema.isMinLength(8)),
+})
+
+const decodeConfirmQuery = (query: unknown) => {
+  const result = Schema.decodeUnknownResult(ConfirmAccountQuery)(query)
+  return Result.isSuccess(result) ? result.success : null
+}
+
+const decodeForgotPassword = (body: unknown) => {
+  const result = Schema.decodeUnknownResult(ForgotPasswordBody)(body)
+  return Result.isSuccess(result) ? result.success : null
+}
+
+const decodeResetPassword = (body: unknown) => {
+  const result = Schema.decodeUnknownResult(ResetPasswordBody)(body)
+  return Result.isSuccess(result) ? result.success : null
+}
+
+const decodeChangePassword = (body: unknown) => {
+  const result = Schema.decodeUnknownResult(ChangePasswordBody)(body)
+  return Result.isSuccess(result) ? result.success : null
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const resolveRefreshToken = (req: FastifyRequest, body: { refreshToken?: string }): string | null =>
@@ -155,5 +194,76 @@ export const authRoutes = async (fastify: FastifyInstance) => {
     schema: { tags: ["Auth"], summary: "Get authenticated user profile" },
   }, async (req, reply) => {
     return reply.status(200).send({ success: true, statusCode: 200, message: "OK", data: (req as unknown as { user?: unknown }).user })
+  })
+
+  // GET /auth/confirm?email=...&code=...
+  fastify.get("/auth/confirm", {
+    schema: { tags: ["Auth"], summary: "Confirm account with OTP code" },
+  }, async (req, reply) => {
+    const query = decodeConfirmQuery(req.query)
+    if (!query) return badRequest(reply, "email and code are required query params")
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.confirmAccount(query.email, query.code)),
+      {
+        transform: (_void, reply) => {
+          void reply.status(200).send({ success: true, statusCode: 200, message: "Account confirmed", data: null })
+        },
+      },
+    )
+  })
+
+  // POST /auth/forgot-password
+  fastify.post("/auth/forgot-password", {
+    schema: { tags: ["Auth"], summary: "Request a password reset email" },
+  }, async (req, reply) => {
+    const body = decodeForgotPassword(req.body)
+    if (!body) return badRequest(reply, "Invalid request body")
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.forgotPassword(body.email)),
+      {
+        transform: (_void, reply) => {
+          void reply.status(200).send({
+            success: true, statusCode: 200,
+            message: "If an account with that email exists, a reset link has been sent.",
+            data: null,
+          })
+        },
+      },
+    )
+  })
+
+  // POST /auth/reset-password
+  fastify.post("/auth/reset-password", {
+    schema: { tags: ["Auth"], summary: "Reset password using token from email" },
+  }, async (req, reply) => {
+    const body = decodeResetPassword(req.body)
+    if (!body) return badRequest(reply, "Invalid request body")
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.resetPassword(body.token, body.newPassword)),
+      {
+        transform: (_void, reply) => {
+          void reply.status(200).send({ success: true, statusCode: 200, message: "Password reset successfully", data: null })
+        },
+      },
+    )
+  })
+
+  // POST /auth/change-password  (requires auth)
+  fastify.post("/auth/change-password", {
+    preHandler: [requireAuth],
+    schema: { tags: ["Auth"], summary: "Change password (authenticated)" },
+  }, async (req, reply) => {
+    const body = decodeChangePassword(req.body)
+    if (!body) return badRequest(reply, "Invalid request body")
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const userId = (req as unknown as { user?: { sub: string } }).user!.sub
+    return effectHandler(req, reply,
+      Effect.flatMap(AuthService, (s) => s.changePassword(userId, body.oldPassword, body.newPassword)),
+      {
+        transform: (_void, reply) => {
+          void reply.status(200).send({ success: true, statusCode: 200, message: "Password changed successfully", data: null })
+        },
+      },
+    )
   })
 }
