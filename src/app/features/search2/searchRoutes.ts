@@ -196,7 +196,7 @@ export const searchRoutes = async (fastify: FastifyInstance): Promise<void> => {
     },
   }, async (request, reply) => {
     return effectHandler(request, reply,
-      Effect.flatMap(SearchService, (s) => s.healthCheck()) as unknown as Effect.Effect<unknown, AppError, never>,
+      Effect.flatMap(SearchService, (s) => s.healthCheck()),
       {
         transform: (data, reply) => {
           void reply.status((data as { healthy: boolean }).healthy ? 200 : 503).send({ success: (data as { healthy: boolean }).healthy, data })

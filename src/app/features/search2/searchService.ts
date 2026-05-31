@@ -27,6 +27,7 @@ import {
   SearchIngestError,
   SearchJobNotFoundError,
 } from "./searchErrors.ts"
+import { HealthCheckError } from "../../../core/errors/infraErrors.ts"
 import {
   hybridSearch,
   suggestDocuments,
@@ -123,12 +124,25 @@ export interface SearchService {
     jobId: string,
   ) => Effect.Effect<JobStatus, SearchJobNotFoundError>
 
-  readonly healthCheck: () => Effect.Effect<SearchHealthResult, never>
+  readonly healthCheck: () => Effect.Effect<SearchHealthResult, HealthCheckError>
 }
 
 export const SearchService = Context.Service<SearchService>("@search/SearchService")
 
 // ── Cache helpers ─────────────────────────────────────────────────────────────
+
+/** Recursively sort object keys for deterministic JSON.stringify fingerprinting. */
+const sortKeys = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(sortKeys)
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => [k, sortKeys(v)])
+    )
+  }
+  return value
+}
 
 const buildCacheKey = async (input: HybridSearchInput): Promise<string> => {
   const fingerprint = JSON.stringify({
@@ -136,7 +150,7 @@ const buildCacheKey = async (input: HybridSearchInput): Promise<string> => {
     et: input.entityType ?? null,
     l: input.limit ?? DEFAULT_LIMIT,
     cl: input.candidateLimit ?? DEFAULT_CANDIDATE_LIMIT,
-    mf: input.metadataFilter ?? null,
+    mf: input.metadataFilter != null ? sortKeys(input.metadataFilter) : null,
   })
   const hash = await sha256Hex(fingerprint)
   return `search:${input.tenantId}:${hash}`
@@ -331,7 +345,7 @@ const make = Effect.gen(function* () {
   const healthCheck = () =>
     Effect.gen(function* () {
       const exts = yield* postgres.query((db) => checkExtensions(db)).pipe(
-        Effect.orElseSucceed(() => ({ pgTrgm: false, pgvector: false, pgTextsearch: false }))
+        Effect.mapError((cause) => new HealthCheckError({ component: "search-extensions", cause }))
       )
       return {
         healthy: exts.pgTrgm && exts.pgvector,
