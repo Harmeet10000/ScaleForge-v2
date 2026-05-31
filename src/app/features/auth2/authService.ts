@@ -29,34 +29,7 @@ import {
   PasswordSameAsOldError,
   InvalidOldPasswordError,
 } from "../../../core/errors/authErrors.ts"
-import type { OAuthUserProfile } from "./oauthService.ts"
-
-// ── DTOs ─────────────────────────────────────────────────────────────────────
-
-export interface RegisterInput {
-  readonly name: string
-  readonly email: string
-  readonly password: string
-  readonly consent?: boolean
-  readonly phoneNumber?: string
-}
-
-export interface LoginInput {
-  readonly email: string
-  readonly password: string
-}
-
-export interface AuthTokens {
-  readonly accessToken: string
-  readonly refreshToken: string
-}
-
-export interface UserProfile {
-  readonly id: string
-  readonly name: string
-  readonly email: string
-  readonly role: string
-}
+import type { RegisterInput, LoginInput, AuthTokens, UserProfile, OAuthUserProfile } from "./authTypes.ts"
 
 // ── Service interface ─────────────────────────────────────────────────────────
 
@@ -144,11 +117,11 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.orDie)
 
       // 5. Fire-and-forget confirmation email
-      yield* emailSvc.send({
+      yield* Effect.forkDetach(emailSvc.send({
         to: [input.email],
         subject: "Confirm Your Account",
         html: `<p>Your confirmation code is: <strong>${confirmCode}</strong></p>`,
-      }).pipe(Effect.ignore)
+      }).pipe(Effect.ignore))
 
       return { id, name: input.name, email: input.email, role: "user" } satisfies UserProfile
     })
@@ -273,11 +246,11 @@ const make = Effect.gen(function* () {
       ).pipe(Effect.orDie)
 
       const resetUrl = `${process.env["FRONTEND_URL"] ?? "http://localhost:3000"}/reset-password?token=${token}`
-      yield* emailSvc.send({
+      yield* Effect.forkDetach(emailSvc.send({
         to: [email],
         subject: "Reset Your Password",
         html: `<p>Click <a href="${resetUrl}">here</a> to reset your password. Expires in 1 hour.</p>`,
-      }).pipe(Effect.ignore)
+      }).pipe(Effect.ignore))
     })
 
   const resetPassword = (token: string, newPassword: string) =>
