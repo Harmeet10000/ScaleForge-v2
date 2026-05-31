@@ -22,16 +22,7 @@ import { Effect } from "effect"
 import { request } from "undici"
 import { Webhook } from "standardwebhooks"
 import { RabbitMQPublishError } from "../core/errors/infraErrors.ts"
-
-export interface WebhookJob {
-  readonly deliveryId: string
-  readonly subscriptionId: string
-  readonly event: string
-  readonly payload: unknown
-  readonly secret: string
-  readonly url: string
-  readonly attempt: number
-}
+import type { WebhookJob } from "../infra/webhooks/webhookPublisher.ts"
 
 // Exponential backoff delays in seconds: 30s, 5m, 30m, 2h, 8h
 const BACKOFF_DELAYS_SECS = [30, 300, 1800, 7200, 28800] as const

@@ -26,7 +26,18 @@ import { createId } from "@paralleldrive/cuid2"
 import { PostgresService } from "../postgres/postgresService.ts"
 import { RabbitMQService } from "../rabbitmq/rabbitmqService.ts"
 import { webhookSubscriptions, webhookDeliveries } from "../../db/schema/webhookSchema.ts"
-import type { WebhookJob } from "../../workers/webhookWorker.ts"
+
+// ── Shared message type (imported by webhookWorker) ───────────────────────────
+
+export interface WebhookJob {
+  readonly deliveryId: string
+  readonly subscriptionId: string
+  readonly event: string
+  readonly payload: unknown
+  readonly secret: string
+  readonly url: string
+  readonly attempt: number
+}
 
 // ── Service interface ─────────────────────────────────────────────────────────
 
@@ -102,7 +113,7 @@ const make = Effect.gen(function* () {
     })
 
     return inner.pipe(
-      Effect.catchAllCause((cause) =>
+      Effect.catchCause((cause) =>
         Effect.logError("[webhook-publisher] failed to emit event", { event, cause })
       ),
     )

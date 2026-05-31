@@ -15,7 +15,7 @@
 
 import { randomBytes } from "node:crypto"
 import type { FastifyInstance } from "fastify"
-import { Effect, Schema } from "effect"
+import { Effect, Result, Schema } from "effect"
 import { eq, and, sql } from "drizzle-orm"
 import { createId } from "@paralleldrive/cuid2"
 import { requireAuth } from "../auth2/authMiddleware.ts"
@@ -23,18 +23,17 @@ import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import { PostgresService } from "../../../infra/postgres/postgresService.ts"
 import { webhookSubscriptions } from "../../../db/schema/webhookSchema.ts"
 import { deliverWebhook } from "../../../workers/webhookWorker.ts"
+import {
+  ValidationError,
+  NotFoundError,
+  ExternalServiceError,
+} from "../../../core/errors/commonErrors.ts"
 
 // ── Schemas ───────────────────────────────────────────────────────────────────
 
 const CreateWebhookBody = Schema.Struct({
   url: Schema.String.check(Schema.isPattern(/^https:\/\/.+/)),
   events: Schema.Array(Schema.String).check(Schema.isNonEmpty()),
-})
-
-const UpdateWebhookBody = Schema.Struct({
-  url: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^https:\/\/.+/))),
-  events: Schema.optionalKey(Schema.Array(Schema.String).check(Schema.isNonEmpty())),
-  enabled: Schema.optionalKey(Schema.Boolean),
 })
 
 // ── Routes ────────────────────────────────────────────────────────────────────
@@ -53,10 +52,10 @@ export const webhookRoutes = async (fastify: FastifyInstance) => {
       const postgres = yield* PostgresService
 
       const bodyResult = Schema.decodeUnknownResult(CreateWebhookBody)(req.body)
-      if (!bodyResult.success) {
-        return yield* Effect.fail({ _tag: "ValidationError" as const, message: "Invalid request body" } as never)
+      if (Result.isFailure(bodyResult)) {
+        return yield* Effect.fail(new ValidationError({ field: "body", message: "Invalid request body" }))
       }
-      const body = bodyResult.value
+      const body = bodyResult.success
 
       const userId = req.user!.sub
       const id = createId()
@@ -75,7 +74,7 @@ export const webhookRoutes = async (fastify: FastifyInstance) => {
             enabled: true,
           })
           .returning()
-      )
+      ).pipe(Effect.mapError((e) => new ExternalServiceError({ service: "postgres", cause: e })))
 
       return { id: created!.id, url: created!.url, events: created!.events, enabled: created!.enabled, secret, createdAt: created!.createdAt }
     }), { statusCode: 201 })
@@ -105,7 +104,7 @@ export const webhookRoutes = async (fastify: FastifyInstance) => {
           })
           .from(webhookSubscriptions)
           .where(eq(webhookSubscriptions.userId, userId))
-      )
+      ).pipe(Effect.mapError((e) => new ExternalServiceError({ service: "postgres", cause: e })))
 
       return subs
     }))
@@ -135,10 +134,10 @@ export const webhookRoutes = async (fastify: FastifyInstance) => {
             )
           )
           .returning({ id: webhookSubscriptions.id })
-      )
+      ).pipe(Effect.mapError((e) => new ExternalServiceError({ service: "postgres", cause: e })))
 
       if (deleted.length === 0) {
-        return yield* Effect.fail({ _tag: "NotFoundError" as const, message: "Subscription not found" } as never)
+        return yield* Effect.fail(new NotFoundError({ resource: "Webhook subscription", identifier: id }))
       }
 
       return { deleted: true }
@@ -171,15 +170,14 @@ export const webhookRoutes = async (fastify: FastifyInstance) => {
             )
           )
           .limit(1)
-      )
+      ).pipe(Effect.mapError((e) => new ExternalServiceError({ service: "postgres", cause: e })))
 
       if (!sub) {
-        return yield* Effect.fail({ _tag: "NotFoundError" as const, message: "Subscription not found or disabled" } as never)
+        return yield* Effect.fail(new NotFoundError({ resource: "Webhook subscription", identifier: id }))
       }
 
-      const deliveryId = createId()
       const statusCode = yield* deliverWebhook({
-        deliveryId,
+        deliveryId: createId(),
         subscriptionId: sub.id,
         event: "webhook.test",
         payload: { message: "This is a test event from ScaleForge", timestamp: new Date().toISOString() },
@@ -187,11 +185,10 @@ export const webhookRoutes = async (fastify: FastifyInstance) => {
         url: sub.url,
         attempt: 0,
       }).pipe(
-        Effect.map((code) => code),
-        Effect.catchAll(() => Effect.succeed(0)),
+        Effect.match({ onSuccess: (code) => code, onFailure: () => 0 }),
       )
 
-      return { delivered: statusCode >= 200 && statusCode < 300, statusCode, deliveryId }
+      return { delivered: statusCode >= 200 && statusCode < 300, statusCode, deliveryId: sub.id }
     }))
   })
 }

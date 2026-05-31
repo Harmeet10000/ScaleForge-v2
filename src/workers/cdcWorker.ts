@@ -34,7 +34,7 @@ import { Effect, Layer, ManagedRuntime, Queue, Stream, Schedule, Context } from 
 import { gt } from "drizzle-orm"
 import closeWithGrace from "close-with-grace"
 import { MongoService, MongoServiceLive } from "../infra/mongo/mongoService.ts"
-import { PostgresService, PostgresServiceLive } from "../infra/postgres/postgresService.ts"
+import { PostgresService } from "../infra/postgres/postgresService.ts"
 import { WebhookPublisher, WebhookPublisherLive } from "../infra/webhooks/webhookPublisher.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
 import { makeWorkerHealth } from "./shared/workerHealth.ts"
@@ -90,10 +90,11 @@ const WATCHED_COLLECTIONS: Record<string, string> = {
   notifications: "notification.delivered",
 }
 
-class MongoWatcherService extends Context.Tag("@workers/MongoWatcherService")<
-  MongoWatcherService,
-  { readonly start: () => Effect.Effect<void, never, never> }
->() {}
+interface MongoWatcherService {
+  readonly start: () => Effect.Effect<void>
+}
+
+const MongoWatcherService = Context.Service<MongoWatcherService>("@workers/MongoWatcherService")
 
 const MongoWatcherServiceLive = Layer.effect(
   MongoWatcherService,
@@ -109,44 +110,37 @@ const MongoWatcherServiceLive = Layer.effect(
         // Open a database-level change stream that captures all collections
         const changeStream = mongo.connection.watch([], { fullDocument: "updateLookup" })
 
-        // Bridge EventEmitter → Effect Queue in a fire-and-forget fiber
-        yield* Effect.fork(
-          Effect.async<never, never>((resume) => {
-            changeStream.on("change", (change: unknown) => {
-              const doc = change as {
-                ns?: { coll?: string }
-                fullDocument?: Record<string, unknown> | null
-                documentKey?: { _id?: unknown }
-                operationType?: string
-              }
+        // Bridge EventEmitter → Effect Queue synchronously.
+        // Callbacks use Effect.runFork(Queue.offer(...)) to push without blocking.
+        yield* Effect.sync(() => {
+          changeStream.on("change", (change: unknown) => {
+            const doc = change as {
+              ns?: { coll?: string }
+              fullDocument?: Record<string, unknown> | null
+              documentKey?: { _id?: unknown }
+              operationType?: string
+            }
 
-              const collection = doc.ns?.coll ?? ""
-              if (!Object.hasOwn(WATCHED_COLLECTIONS, collection)) return
+            const collection = doc.ns?.coll ?? ""
+            if (!Object.hasOwn(WATCHED_COLLECTIONS, collection)) return
 
-              const documentId = String(doc.documentKey?._id ?? "")
-              const operationType = (doc.operationType ?? "update") as MongoChangeDoc["operationType"]
+            const documentId = String(doc.documentKey?._id ?? "")
+            const operationType = (doc.operationType ?? "update") as MongoChangeDoc["operationType"]
 
-              void Effect.runFork(
-                Queue.offer(changeQueue, {
-                  collection,
-                  document: (doc.fullDocument as Record<string, unknown>) ?? null,
-                  documentId,
-                  operationType,
-                }),
-              )
-            })
+            void Effect.runFork(
+              Queue.offer(changeQueue, {
+                collection,
+                document: (doc.fullDocument as Record<string, unknown>) ?? null,
+                documentId,
+                operationType,
+              }),
+            )
+          })
 
-            changeStream.on("error", (err) => {
-              console.error("[cdc-worker] mongo change stream error:", err)
-              // Resume never called — stream should reconnect externally
-            })
-
-            // Return cleanup
-            return Effect.sync(() => {
-              void changeStream.close()
-            })
-          }),
-        )
+          changeStream.on("error", (err: Error) => {
+            console.error("[cdc-worker] mongo change stream error:", err)
+          })
+        })
 
         // Process buffered changes with 500ms debounce
         yield* Stream.fromQueue(changeQueue).pipe(
@@ -172,12 +166,7 @@ const MongoWatcherServiceLive = Layer.effect(
       })
 
     return MongoWatcherService.of({ start })
-  }).pipe(
-    Effect.provide(Layer.mergeAll(
-      MongoService,
-      WebhookPublisher,
-    ) as Layer.Layer<MongoService | WebhookPublisher, never, never>),
-  ),
+  }),
 )
 
 // ── PgPollerService ────────────────────────────────────────────────────────────
@@ -185,10 +174,11 @@ const MongoWatcherServiceLive = Layer.effect(
 const PG_POLL_INTERVAL = "10 seconds"
 const PG_POLL_BATCH = 200
 
-class PgPollerService extends Context.Tag("@workers/PgPollerService")<
-  PgPollerService,
-  { readonly start: () => Effect.Effect<void, never, never> }
->() {}
+interface PgPollerService {
+  readonly start: () => Effect.Effect<void>
+}
+
+const PgPollerService = Context.Service<PgPollerService>("@workers/PgPollerService")
 
 const PgPollerServiceLive = Layer.effect(
   PgPollerService,
@@ -235,7 +225,7 @@ const PgPollerServiceLive = Layer.effect(
 
     const start = () =>
       Effect.repeat(poll, Schedule.fixed(PG_POLL_INTERVAL)).pipe(
-        Effect.catchAllCause((cause) =>
+        Effect.catchCause((cause) =>
           Effect.sync(() => {
             console.error("[cdc-worker] pg poller fatal:", cause)
           }),
@@ -244,12 +234,7 @@ const PgPollerServiceLive = Layer.effect(
       )
 
     return PgPollerService.of({ start })
-  }).pipe(
-    Effect.provide(Layer.mergeAll(
-      PostgresService,
-      WebhookPublisher,
-    ) as Layer.Layer<PostgresService | WebhookPublisher, never, never>),
-  ),
+  }),
 )
 
 // ── Orchestrator program ───────────────────────────────────────────────────────
@@ -265,12 +250,12 @@ const cdcProgram = Effect.gen(function* () {
   yield* Effect.all(
     [
       mongoWatcher.start().pipe(
-        Effect.catchAllCause((cause) =>
+        Effect.catchCause((cause) =>
           Effect.logWarning("[cdc-worker] mongo watcher stopped", { cause }),
         ),
       ),
       pgPoller.start().pipe(
-        Effect.catchAllCause((cause) =>
+        Effect.catchCause((cause) =>
           Effect.logWarning("[cdc-worker] pg poller stopped", { cause }),
         ),
       ),
@@ -304,11 +289,11 @@ const CdcWorkerRootLayer = Layer.mergeAll(
   WebhookPublisherLayer,
   MongoWatcherLayer,
   PgPollerLayer,
-)
+) as unknown as Layer.Layer<MongoWatcherService | PgPollerService, never, never>
 
 // ── Entry point ────────────────────────────────────────────────────────────────
 
-const health = makeWorkerHealth({ port: Number(process.env.WORKER_HEALTH_PORT ?? 9105) })
+const health = makeWorkerHealth({ port: Number(process.env['WORKER_HEALTH_PORT'] ?? 9105) })
 
 const runtime = ManagedRuntime.make(CdcWorkerRootLayer)
 
@@ -320,22 +305,20 @@ closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   }
   health.setReady(false)
   await health.stop()
-  await Effect.runPromise(runtime.dispose())
+  await runtime.dispose()
 })
 
 void health.start().then(() => {
   health.setReady(true)
 })
 
-Effect.runFork(
-  runtime.runFork(
-    cdcProgram.pipe(
-      Effect.catchCause((cause) =>
-        Effect.sync(() => {
-          console.error("[cdc-worker] fatal", cause)
-          process.exit(1)
-        }),
-      ),
+runtime.runFork(
+  cdcProgram.pipe(
+    Effect.catchCause((cause) =>
+      Effect.sync(() => {
+        console.error("[cdc-worker] fatal", cause)
+        process.exit(1)
+      }),
     ),
   ),
 )
