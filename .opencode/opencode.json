@@ -11,16 +11,13 @@
   ],
 "skills": {
     "paths": [
-      ".opencode/skills"
+      ".opencode/skills",
+        "/home/harmeet/Desktop/prompts/skills"
     ]
   },
   "permission": {
     "bash": {
       "*": "ask",
-      "uv *": "allow",
-      "pytest *": "allow",
-      "ruff *": "allow",
-      "ty *": "allow",
       "git status*": "allow",
       "git diff*": "allow",
       "git log*": "allow",
