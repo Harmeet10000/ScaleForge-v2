@@ -1,5 +1,5 @@
 /**
- * src/app/features/search2/searchChunking.ts
+ * src/app/features/search/searchChunking.ts
  *
  * Pure text chunking with word-boundary overlap.
  *

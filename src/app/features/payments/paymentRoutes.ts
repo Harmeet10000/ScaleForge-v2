@@ -22,7 +22,7 @@
 import type { FastifyInstance } from "fastify"
 import { Effect, Result, Schema } from "effect"
 import { eq, and, desc } from "drizzle-orm"
-import { requireAuth } from "../auth2/authMiddleware.ts"
+import { requireAuth } from "../auth/authMiddleware.ts"
 import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import { PostgresService } from "../../../infra/postgres/postgresService.ts"
 import { payments } from "../../../db/schema/paymentSchema.ts"

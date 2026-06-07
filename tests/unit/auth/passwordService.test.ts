@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "bun:test"
 import { Cause, Effect, Result } from "effect"
-import { PasswordService, PasswordServiceLive } from "../../../src/app/features/auth2/passwordService.ts"
+import { PasswordService, PasswordServiceLive } from "../../../src/app/features/auth/passwordService.ts"
 import { InvalidCredentialsError } from "../../../src/core/errors/authErrors.ts"
 
 const run = <A, E>(effect: Effect.Effect<A, E, PasswordService>) =>

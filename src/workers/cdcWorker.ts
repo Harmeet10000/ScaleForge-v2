@@ -38,6 +38,7 @@ import { PostgresService } from "../infra/postgres/postgresService.ts"
 import { WebhookPublisher, WebhookPublisherLive } from "../infra/webhooks/webhookPublisher.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
 import { makeWorkerHealth } from "./shared/workerHealth.ts"
+import { PinoLoggerLayer } from "../infra/logger/pinoLogger.ts"
 import { AppConfigLive } from "../core/config/configService.ts"
 import { users } from "../db/schema/userSchema.ts"
 
@@ -138,7 +139,11 @@ const MongoWatcherServiceLive = Layer.effect(
           })
 
           changeStream.on("error", (err: Error) => {
-            console.error("[cdc-worker] mongo change stream error:", err)
+            void Effect.runFork(
+              Effect.logError("[cdc-worker] mongo change stream error", err).pipe(
+                Effect.provide(PinoLoggerLayer),
+              ),
+            )
           })
         })
 
@@ -193,20 +198,21 @@ const PgPollerServiceLive = Layer.effect(
       const cutoff = lastPollTime
       lastPollTime = new Date()
 
-      const rows = yield* Effect.tryPromise({
+      const rowsOption = yield* Effect.tryPromise({
         try: () =>
           pg.db
             .select({ id: users.id, name: users.name, emailAddress: users.emailAddress, updatedAt: users.updatedAt })
             .from(users)
             .where(gt(users.updatedAt, cutoff))
             .limit(PG_POLL_BATCH),
-        catch: (err) => {
-          console.error("[cdc-worker] pg poll error:", err)
-          return undefined
-        },
-      })
+        catch: (err) => err,
+      }).pipe(
+        Effect.tapError((err) => Effect.logError("[cdc-worker] pg poll error", err)),
+        Effect.option,
+      )
 
-      if (!rows) return
+      if (rowsOption._tag === "None") return
+      const rows = rowsOption.value
 
       for (const row of rows) {
         if (!dedup.shouldProcess(row.id)) continue
@@ -225,11 +231,7 @@ const PgPollerServiceLive = Layer.effect(
 
     const start = () =>
       Effect.repeat(poll, Schedule.fixed(PG_POLL_INTERVAL)).pipe(
-        Effect.catchCause((cause) =>
-          Effect.sync(() => {
-            console.error("[cdc-worker] pg poller fatal:", cause)
-          }),
-        ),
+        Effect.catchCause((cause) => Effect.logError("[cdc-worker] pg poller fatal", cause)),
         Effect.asVoid,
       )
 
@@ -299,9 +301,17 @@ const runtime = ManagedRuntime.make(CdcWorkerRootLayer)
 
 closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   if (err) {
-    console.error("[cdc-worker] unexpected error — shutting down:", err)
+    void Effect.runFork(
+      Effect.logError("[cdc-worker] unexpected error — shutting down", err).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   } else {
-    console.log(`[cdc-worker] received ${signal ?? "close"}, shutting down…`)
+    void Effect.runFork(
+      Effect.log(`[cdc-worker] received ${signal ?? "close"}, shutting down…`).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   }
   health.setReady(false)
   await health.stop()
@@ -315,9 +325,9 @@ void health.start().then(() => {
 runtime.runFork(
   cdcProgram.pipe(
     Effect.catchCause((cause) =>
-      Effect.sync(() => {
-        console.error("[cdc-worker] fatal", cause)
-        process.exit(1)
+      Effect.gen(function* () {
+        yield* Effect.logError("[cdc-worker] fatal", cause)
+        yield* Effect.sync(() => process.exit(1))
       }),
     ),
   ),

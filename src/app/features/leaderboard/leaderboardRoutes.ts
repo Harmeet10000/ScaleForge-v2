@@ -25,7 +25,7 @@ import { Effect } from "effect"
 import Redis from "ioredis"
 import { LeaderboardService } from "./leaderboardService.ts"
 import type { LeaderboardDelta, LeaderboardWindow } from "./leaderboardService.ts"
-import { requireAuth } from "../auth2/authMiddleware.ts"
+import { requireAuth } from "../auth/authMiddleware.ts"
 import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import { makeMessage } from "../../../infra/ws/wsCodec.ts"
 

@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/apiKeyService.ts
+ * src/app/features/auth/apiKeyService.ts
  *
  * API key lifecycle management.
  *

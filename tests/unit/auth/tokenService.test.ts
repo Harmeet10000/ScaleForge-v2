@@ -7,7 +7,7 @@
 import { describe, it, expect } from "bun:test"
 import { Cause, Effect, Layer, Redacted, Result } from "effect"
 import { generateKeys } from "paseto-ts/v4"
-import { TokenService, TokenServiceLive } from "../../../src/app/features/auth2/tokenService.ts"
+import { TokenService, TokenServiceLive } from "../../../src/app/features/auth/tokenService.ts"
 import { AppConfig } from "../../../src/core/config/configService.ts"
 import { InvalidTokenError } from "../../../src/core/errors/authErrors.ts"
 

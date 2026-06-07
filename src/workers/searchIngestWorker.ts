@@ -31,12 +31,13 @@ import { RabbitConsumerService, RabbitConsumerServiceLive } from "./shared/rabbi
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
 import { makeWorkerHealth } from "./shared/workerHealth.ts"
+import { PinoLoggerLayer } from "../infra/logger/pinoLogger.ts"
 import { AppConfigLive } from "../core/config/configService.ts"
 import { PostgresServiceLive } from "../infra/postgres/postgresService.ts"
 import { RedisServiceLive } from "../infra/redis/redisService.ts"
 import { GeminiServiceLive } from "../infra/gemini/geminiService.ts"
-import { chunkText, normalizeText } from "../app/features/search2/searchChunking.ts"
-import { upsertChunks, countChunksForDocument, analyzeChunks } from "../app/features/search2/searchRepository.ts"
+import { chunkText, normalizeText } from "../app/features/search/searchChunking.ts"
+import { upsertChunks, countChunksForDocument, analyzeChunks } from "../app/features/search/searchRepository.ts"
 
 // ── Message schema ─────────────────────────────────────────────────────────────
 
@@ -250,9 +251,17 @@ const runtime = ManagedRuntime.make(SearchIngestWorkerLayer)
 
 closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   if (err) {
-    console.error("[search-ingest] unexpected error — shutting down:", err)
+    void Effect.runFork(
+      Effect.logError("[search-ingest] unexpected error — shutting down", err).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   } else {
-    console.log(`[search-ingest] received ${signal ?? "close"}, shutting down…`)
+    void Effect.runFork(
+      Effect.log(`[search-ingest] received ${signal ?? "close"}, shutting down…`).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   }
   await runtime.dispose()
 })
@@ -261,9 +270,9 @@ runtime.runFork(
   workerProgram.pipe(
     Effect.scoped,
     Effect.catchCause((cause) =>
-      Effect.sync(() => {
-        console.error("[search-ingest] fatal error", cause)
-        process.exit(1)
+      Effect.gen(function* () {
+        yield* Effect.logError("[search-ingest] fatal error", cause)
+        yield* Effect.sync(() => process.exit(1))
       }),
     ),
   ),

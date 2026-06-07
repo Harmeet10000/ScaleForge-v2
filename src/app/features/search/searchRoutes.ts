@@ -1,5 +1,5 @@
 /**
- * src/app/features/search2/searchRoutes.ts
+ * src/app/features/search/searchRoutes.ts
  *
  * Fastify plugin: /api/v1/search routes.
  *
@@ -14,7 +14,7 @@
 import type { FastifyInstance } from "fastify"
 import { Effect } from "effect"
 import { SearchService } from "./searchService.ts"
-import { requireAuth } from "../auth2/authMiddleware.ts"
+import { requireAuth } from "../auth/authMiddleware.ts"
 import { effectHandler } from "../../../runtime/fastifyBridge.ts"
 import type { AppError } from "../../../core/errors/httpErrors.ts"
 

@@ -33,6 +33,7 @@
     "prepare": "husky",
     "lint": "bunx oxlint",
     "lint:fix": "bunx oxlint --fix",
+    "lint:no-console": "bun run scripts/lint-no-console.ts",
     "format": "bunx oxfmt --write",
     "format:check": "bunx oxfmt --check",
     "check": "bun run type-check && bun run lint && bun run format:check && bun run check:layers",
@@ -63,6 +64,10 @@
     "security:fix": "bunx snyk fix",
     "security:wizard": "bunx snyk wizard",
     "snyk:setup": "bash scripts/snyk-setup.sh",
+    "security:lockfile": "bun run scripts/check-lockfile.ts",
+    "security:install": "bun install --frozen-lockfile",
+    "security:audit": "bunx snyk test --severity-threshold=high",
+    "security:scan": "bun run security:lockfile && bun run security:audit",
     "worker:webhook": "bun src/workers/webhookDeliveryWorker.ts",
     "worker:pdf": "bun src/workers/pdfReceiptWorker.ts",
     "worker:email": "bun src/workers/emailWorker.ts",
@@ -103,6 +108,7 @@
     "@paralleldrive/cuid2": "2.2.2",
     "@platformatic/fastify-http-metrics": "^0.3.0",
     "@platformatic/flame": "^1.6.0",
+    "@platformatic/vfs": "^0.4.0",
     "@sentry/node": "^10.55.0",
     "amqplib": "0.10.7",
     "arctic": "^3.7.0",
@@ -141,6 +147,7 @@
     "rate-limit-redis": "4.2.1",
     "razorpay": "2.9.6",
     "resend": "^4.8.0",
+    "simdjson": "^0.9.2",
     "source-map-support": "^0.5.21",
     "standardwebhooks": "^1.0.0",
     "superjson": "2.2.2",
@@ -197,7 +204,6 @@
   "trustedDependencies": [
     "@datadog/pprof",
     "es5-ext",
-    "protobufjs",
-    "simdjson"
+    "protobufjs"
   ]
 }

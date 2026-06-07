@@ -27,6 +27,7 @@ import { RabbitConsumerService, RabbitConsumerServiceLive } from "./shared/rabbi
 import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
 import { makeWorkerHealth } from "./shared/workerHealth.ts"
+import { PinoLoggerLayer } from "../infra/logger/pinoLogger.ts"
 import { AppConfigLive } from "../core/config/configService.ts"
 import { PostgresServiceLive } from "../infra/postgres/postgresService.ts"
 import { RedisServiceLive } from "../infra/redis/redisService.ts"
@@ -181,9 +182,17 @@ const runtime = ManagedRuntime.make(LeaderboardWorkerLayer)
 
 closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   if (err) {
-    console.error("[leaderboard-worker] unexpected error — shutting down:", err)
+    void Effect.runFork(
+      Effect.logError("[leaderboard-worker] unexpected error — shutting down", err).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   } else {
-    console.log(`[leaderboard-worker] received ${signal ?? "close"}, shutting down…`)
+    void Effect.runFork(
+      Effect.log(`[leaderboard-worker] received ${signal ?? "close"}, shutting down…`).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   }
   await runtime.dispose()
 })
@@ -192,9 +201,9 @@ runtime.runFork(
   workerProgram.pipe(
     Effect.scoped,
     Effect.catchCause((cause) =>
-      Effect.sync(() => {
-        console.error("[leaderboard-worker] fatal error", cause)
-        process.exit(1)
+      Effect.gen(function* () {
+        yield* Effect.logError("[leaderboard-worker] fatal error", cause)
+        yield* Effect.sync(() => process.exit(1))
       }),
     ),
   ),

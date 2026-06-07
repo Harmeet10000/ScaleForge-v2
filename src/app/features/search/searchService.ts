@@ -1,5 +1,5 @@
 /**
- * src/app/features/search2/searchService.ts
+ * src/app/features/search/searchService.ts
  *
  * Effect layer: search business logic.
  *

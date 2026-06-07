@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/authRoutes.ts
+ * src/app/features/auth/authRoutes.ts
  *
  * POST /api/v1/auth/register
  * POST /api/v1/auth/login

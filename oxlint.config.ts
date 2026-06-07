@@ -245,7 +245,7 @@ export default defineConfig({
     // Enforce consistent style across the codebase
     // Let Prettier handle quotes, semi-colons, and line width
 
-    "no-console": "warn", // Allow in dev, warn for cleanup in prod
+    "no-console": "warn", // Promoted to "error" inside src/ via overrides below
     "no-multiple-empty-lines": "warn",
     "no-trailing-spaces": "warn",
     "eol-last": "warn",
@@ -345,6 +345,25 @@ export default defineConfig({
       extensions: [".ts", ".tsx", ".js", ".jsx", ".json"],
     },
   },
+
+  // ── Per-file overrides ────────────────────────────────────────────────────────
+  // Promote `no-console` to "error" inside src/ (default is "warn" so docs/,
+  // tests/, etc. still log freely). Allowlist `src/cli/`, `scripts/`, and
+  // root-level `*.config.ts` because they run outside the Effect runtime.
+  overrides: [
+    {
+      files: ["src/**/*.ts"],
+      rules: {
+        "no-console": "error",
+      },
+    },
+    {
+      files: ["src/cli/**/*", "scripts/**/*", "*.config.ts"],
+      rules: {
+        "no-console": "off",
+      },
+    },
+  ],
 });
 
 /**

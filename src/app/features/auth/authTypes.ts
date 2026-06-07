@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/authTypes.ts
+ * src/app/features/auth/authTypes.ts
  *
  * Shared DTOs for the auth feature.
  * Single source of truth — imported by authService.ts and oauthService.ts.

@@ -1,5 +1,5 @@
 /**
- * tests/unit/features/auth2.test.ts
+ * tests/unit/features/auth.test.ts
  *
  * Unit tests for the 4 new auth flows:
  *   confirmAccount, forgotPassword, resetPassword, changePassword
@@ -10,10 +10,10 @@
 import { describe, it, expect } from "bun:test"
 import { Effect, Layer, Exit, Cause } from "effect"
 import { PostgresService } from "../../../src/infra/postgres/postgresService.ts"
-import { TokenService } from "../../../src/app/features/auth2/tokenService.ts"
-import { PasswordService } from "../../../src/app/features/auth2/passwordService.ts"
+import { TokenService } from "../../../src/app/features/auth/tokenService.ts"
+import { PasswordService } from "../../../src/app/features/auth/passwordService.ts"
 import { EmailService } from "../../../src/infra/email/emailService.ts"
-import { AuthService, AuthServiceLive } from "../../../src/app/features/auth2/authService.ts"
+import { AuthService, AuthServiceLive } from "../../../src/app/features/auth/authService.ts"
 import {
   AccountAlreadyConfirmedError,
   InvalidConfirmationCodeError,

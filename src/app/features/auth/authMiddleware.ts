@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/authMiddleware.ts
+ * src/app/features/auth/authMiddleware.ts
  *
  * Fastify `preHandler` hook that verifies the Bearer PASETO token
  * and attaches the decoded payload to `request.user`.

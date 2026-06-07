@@ -1,5 +1,5 @@
 /**
- * src/app/features/search2/searchRepository.ts
+ * src/app/features/search/searchRepository.ts
  *
  * Raw SQL layer for the hybrid search engine.
  *

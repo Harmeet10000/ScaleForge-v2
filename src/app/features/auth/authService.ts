@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/authService.ts
+ * src/app/features/auth/authService.ts
  *
  * Core auth business logic — no HTTP/Fastify imports.
  * Operations: register, login, refreshTokens, logout,

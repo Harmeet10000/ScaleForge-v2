@@ -26,6 +26,7 @@ import { DLQService, DLQServiceLive } from "./shared/dlqService.ts"
 import { RabbitConsumerService, RabbitConsumerServiceLive } from "./shared/rabbitConsumer.ts"
 import { WorkerLayer } from "./shared/workerLayer.ts"
 import { makeWorkerHealth } from "./shared/workerHealth.ts"
+import { PinoLoggerLayer } from "../infra/logger/pinoLogger.ts"
 import { payments } from "../db/schema/paymentSchema.ts"
 import { AppConfigLive } from "../core/config/configService.ts"
 
@@ -276,9 +277,17 @@ const runtime = ManagedRuntime.make(WorkerRootLayer)
 
 closeWithGrace({ delay: 10_000 }, async ({ signal, err }) => {
   if (err) {
-    console.error("[pdf-worker] unexpected error — shutting down:", err)
+    void Effect.runFork(
+      Effect.logError("[pdf-worker] unexpected error — shutting down", err).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   } else {
-    console.log(`[pdf-worker] received ${signal ?? "close"}, shutting down…`)
+    void Effect.runFork(
+      Effect.log(`[pdf-worker] received ${signal ?? "close"}, shutting down…`).pipe(
+        Effect.provide(PinoLoggerLayer),
+      ),
+    )
   }
   await runtime.dispose()
 })
@@ -287,9 +296,9 @@ runtime.runFork(
   workerProgram.pipe(
     Effect.scoped,
     Effect.catchCause((cause) =>
-      Effect.sync(() => {
-        console.error("[pdf-worker] fatal", cause)
-        process.exit(1)
+      Effect.gen(function* () {
+        yield* Effect.logError("[pdf-worker] fatal", cause)
+        yield* Effect.sync(() => process.exit(1))
       }),
     ),
   ),

@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/oauthService.ts
+ * src/app/features/auth/oauthService.ts
  *
  * Arctic v3 Google OAuth wrapper as an Effect service.
  */

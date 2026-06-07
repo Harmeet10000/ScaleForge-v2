@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/apiKeyMiddleware.ts
+ * src/app/features/auth/apiKeyMiddleware.ts
  *
  * Fastify `preHandler` that authenticates requests using API keys.
  *

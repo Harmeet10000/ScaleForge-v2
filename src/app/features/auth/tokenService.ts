@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/tokenService.ts
+ * src/app/features/auth/tokenService.ts
  *
  * PASETO v4.public tokens — Ed25519 sign/verify.
  * Two tokens issued per session:

@@ -34,7 +34,7 @@ import type {
   SearchQueryTooLongError,
   SearchTenantRequiredError,
   SearchJobNotFoundError,
-} from "../../app/features/search2/searchErrors.ts"
+} from "../../app/features/search/searchErrors.ts"
 
 export interface HttpErrorResponse {
   readonly success: false

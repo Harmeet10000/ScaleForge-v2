@@ -1,5 +1,5 @@
 /**
- * src/app/features/auth2/passwordService.ts
+ * src/app/features/auth/passwordService.ts
  *
  * argon2id password hashing — the only place argon2 is imported.
  */
